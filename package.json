@@ -1,0 +1,11 @@
+{
+  "name": "lift",
+  "private": true,
+  "type": "module",
+  "description": "Lift: a personal workout logger in the style of Hevy. A static offline PWA; data stays on the phone.",
+  "scripts": {
+    "test": "node --test test/logic.test.mjs",
+    "serve": "node scripts/serve.mjs",
+    "check": "node scripts/check.mjs"
+  }
+}
