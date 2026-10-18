@@ -94,12 +94,15 @@ const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-d
 const monthFmt = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
 const shortFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
 
-function toast(text) {
+// A short message at the top; with `undo` it carries an Undo button and stays a little longer.
+function toast(text, undo) {
   const t = $('#toast');
-  t.textContent = text;
+  t.innerHTML = esc(text) + (undo ? '<button class="toast-undo">Undo</button>' : '');
+  t.classList.toggle('act', !!undo);
+  t.onclick = undo ? (e) => { if (e.target.closest('.toast-undo')) { t.classList.remove('show'); undo(); } } : null;
   t.classList.add('show');
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove('show'), 2200);
+  toast.t = setTimeout(() => t.classList.remove('show'), undo ? 4500 : 2200);
 }
 
 // Value of one set as a lifter reads it: "60 kg × 8", "12 reps", "1:30".
@@ -202,7 +205,7 @@ function swipeToClose(sheet, scrim, close) {
   };
   let scroller = null;
   sheet.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) { mode = 'off'; return; }
+    if (e.touches.length !== 1 || e.target.closest('.ro-row')) { mode = 'off'; return; }
     y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = performance.now(); dy = 0; mode = null;
     scroller = scrollerAt(e.target);
   }, { passive: true });
@@ -583,12 +586,12 @@ function setRow(ex, s, j, prev, kind, rec) {
       <input class="in" data-f="r" inputmode="numeric" enterkeyhint="done" aria-label="Reps" placeholder="${h.r ?? ''}" value="${s.r ?? ''}">`;
   else if (kind === 'r') fields = `<input class="in" data-f="r" inputmode="numeric" enterkeyhint="done" aria-label="Reps" placeholder="${h.r ?? ''}" value="${s.r ?? ''}">`;
   else fields = `<input class="in" data-f="t" inputmode="numeric" enterkeyhint="done" aria-label="Time" placeholder="${h.t ? fmtClock(h.t) : '0:00'}" value="${s.t != null ? fmtClock(s.t) : ''}">`;
-  return `<div class="set-row${s.done ? ' done' : ''}" data-si="${j}">
+  return `<div class="set-swipe"><span class="set-del" aria-hidden="true">Delete</span><div class="set-row${s.done ? ' done' : ''}" data-si="${j}">
     <button class="set-no t-${s.type}" data-setmenu aria-label="Set ${label} options">${label}</button>
     <button class="prev" data-prev ${p ? '' : 'disabled'}><span>${esc(prevTxt)}</span>${pr ? '<i class="pr">PR</i>' : ''}</button>
     ${fields}
     <button class="tick" data-tick aria-label="${s.done ? 'Mark set not done' : 'Mark set done'}">${icon('check')}</button>
-  </div>`;
+  </div></div>`;
 }
 
 function sugNote(ex) {
@@ -750,8 +753,7 @@ $('#view').addEventListener('click', (e) => {
   if (t.closest('[data-exmenu]')) {
     const list = a.exercises;
     const items = [];
-    if (i > 0) items.push({ label: 'Move up', fn: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; save(); rerender(); } });
-    if (i < list.length - 1) items.push({ label: 'Move down', fn: () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; save(); rerender(); } });
+    if (list.length > 1) items.push({ label: 'Reorder exercises', fn: () => reorderSheet(list, (x) => `${x.sets.length} set${x.sets.length === 1 ? '' : 's'}`, () => { save(); rerender(); }) });
     items.push({ label: 'Replace exercise', fn: () => pickExercises({ multi: false, title: 'Replace with', onDone: ([id]) => { ex.exId = id; ex.rest = db.restFor[id] ?? ex.rest; save(); rerender(); } }) });
     items.push({ label: 'Remove exercise', danger: true, fn: () => { list.splice(i, 1); save(); rerender(); } });
     actionSheet(getEx(ex.exId).name, items);
@@ -781,10 +783,130 @@ function toggleSet(ex, j, row) {
   save();
   const card = row.closest('.ex');
   const done = doneWorkouts();
-  row.outerHTML = setRow(ex, s, j, previousSets(done, ex.exId), kind, recFor(ex.exId, done));
+  row.parentElement.outerHTML = setRow(ex, s, j, previousSets(done, ex.exId), kind, recFor(ex.exId, done));
   const fresh = card.querySelector(`[data-si="${j}"]`);
   if (s.done) fresh.classList.add('pop');
   paintStats();
+}
+
+// Swipe a set left to delete it, as in Hevy, with Undo. pan-y on the row leaves up/down scrolling to the browser.
+let swipedAt = -Infinity;
+{
+  let st = null;
+  const view = $('#view');
+  view.addEventListener('pointerdown', (e) => {
+    const row = e.target.closest('.set-row');
+    st = row && cur().view === 'active' && e.button <= 0 ? { row, wrap: row.parentElement, x0: e.clientX, y0: e.clientY, t0: performance.now(), dx: 0, on: false, id: e.pointerId } : null;
+  });
+  view.addEventListener('pointermove', (e) => {
+    if (!st || e.pointerId !== st.id) return;
+    const dx = e.clientX - st.x0, dy = e.clientY - st.y0;
+    if (!st.on) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (dx > 0 || Math.abs(dy) > Math.abs(dx)) { st = null; return; }
+      st.on = true;
+      st.row.setPointerCapture?.(e.pointerId);
+      st.wrap.classList.add('dragging');
+      st.row.style.transition = 'none';
+      document.activeElement?.blur?.();
+    }
+    st.dx = Math.min(0, dx);
+    st.row.style.transform = `translateX(${st.dx}px)`;
+  });
+  const end = (e) => {
+    if (!st || e.pointerId !== st.id) return;
+    const s = st;
+    st = null;
+    if (!s.on) return;
+    swipedAt = performance.now();
+    const w = s.row.offsetWidth;
+    const fast = -s.dx / (performance.now() - s.t0) > 0.5;
+    if (e.type === 'pointerup' && (-s.dx > w * 0.4 || (fast && -s.dx > 60))) {
+      s.row.style.transition = 'transform .18s ease-in';
+      s.row.style.transform = `translateX(${-w}px)`;
+      setTimeout(() => removeSet(s.wrap), 180);
+    } else {
+      s.row.style.transition = s.row.style.transform = '';
+      setTimeout(() => s.wrap.classList.remove('dragging'), 220);
+    }
+  };
+  view.addEventListener('pointerup', end);
+  view.addEventListener('pointercancel', end);
+  // A swipe that ends over a button must not also press it.
+  view.addEventListener('click', (e) => { if (performance.now() - swipedAt < 350) { e.stopPropagation(); e.preventDefault(); } }, true);
+}
+function removeSet(wrap) {
+  const { ex } = exAt(wrap);
+  if (!ex) return;
+  const j = +wrap.querySelector('[data-si]').dataset.si;
+  const [gone] = ex.sets.splice(j, 1);
+  const filler = !ex.sets.length && newSet();
+  if (filler) ex.sets.push(filler);
+  save(); rerender();
+  toast('Set deleted', () => {
+    if (!db.active?.exercises.includes(ex)) return;
+    if (filler) ex.sets.splice(ex.sets.indexOf(filler), 1);
+    ex.sets.splice(j, 0, gone);
+    save(); rerender();
+  });
+}
+
+// Hevy's Reorder exercises: a short list in a sheet, hold a row and drag it. `list` is changed in place.
+function reorderSheet(list, sub, onChange) {
+  const s = openSheet(`<p class="sheet-title">Reorder exercises</p>
+    <p class="sheet-text">Hold an exercise and drag it.</p>
+    <div class="ro-list" data-rolist>${list.map((x, k) => {
+      const e = getEx(x.exId);
+      return `<div class="ro-row" data-k="${k}">${thumb(e)}<span class="ro-txt"><b>${esc(e.name)}</b><small>${esc(sub(x))}</small></span>${icon('grip', 'grip')}</div>`;
+    }).join('')}</div>
+    <button class="btn primary block" data-done>Done</button>`);
+  s.el.addEventListener('click', (e) => { if (e.target.closest('[data-done]')) s.close(); });
+  dragSort($('[data-rolist]', s.el), (from, to) => {
+    const [x] = list.splice(from, 1);
+    list.splice(to, 0, x);
+    onChange();
+  });
+}
+function dragSort(box, onMove) {
+  box.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.ro-row');
+    const rows = [...box.children];
+    if (!el || e.button > 0 || rows.length < 2) return;
+    e.preventDefault();
+    const from = rows.indexOf(el);
+    const tops = rows.map((r) => r.getBoundingClientRect().top);
+    const step = tops[1] - tops[0];
+    const y0 = e.clientY;
+    let to = from;
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add('lifted');
+    box.classList.add('sorting');
+    const move = (ev) => {
+      const dy = Math.max(tops[0] - tops[from], Math.min(tops[rows.length - 1] - tops[from], ev.clientY - y0));
+      el.style.transform = `translateY(${dy}px)`;
+      to = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / step)));
+      rows.forEach((r, k) => {
+        if (r === el) return;
+        const sh = k > from && k <= to ? -step : k < from && k >= to ? step : 0;
+        r.style.transform = sh ? `translateY(${sh}px)` : '';
+      });
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      box.classList.remove('sorting');
+      el.classList.remove('lifted');
+      for (const r of rows) { r.style.transition = 'none'; r.style.transform = ''; }
+      if (to !== from) box.insertBefore(el, to > from ? rows[to].nextSibling : rows[to]);
+      void box.offsetWidth;
+      for (const r of rows) r.style.transition = '';
+      if (to !== from) { navigator.vibrate?.(10); onMove(from, to); }
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  });
 }
 
 async function finishWorkout() {
@@ -980,7 +1102,7 @@ VIEWS.routine = (v) => {
           ${thumb(e)}
           <span class="r-name"><b>${esc(e.name)}</b><small>${esc(e.muscle)}</small></span>
           <span class="r-tools">
-            <button class="icon-btn sm" data-up ${i ? '' : 'disabled'} aria-label="Move ${esc(e.name)} up">${icon('down', 'up')}</button>
+            ${d.items.length > 1 ? `<button class="icon-btn sm" data-reorder aria-label="Reorder exercises">${icon('grip')}</button>` : ''}
             <button class="icon-btn sm" data-del aria-label="Remove ${esc(e.name)}">${icon('x')}</button>
           </span>
         </div>
@@ -1031,7 +1153,7 @@ $('#view').addEventListener('click', (e) => {
   const i = +item.dataset.ri;
   const step = t.closest('[data-step]');
   if (step) { d.items[i].sets = Math.min(12, Math.max(1, d.items[i].sets + Number(step.dataset.step))); rerender(); }
-  if (t.closest('[data-up]') && i > 0) { [d.items[i - 1], d.items[i]] = [d.items[i], d.items[i - 1]]; rerender(); }
+  if (t.closest('[data-reorder]')) { reorderSheet(d.items, (x) => `${x.sets} set${x.sets === 1 ? '' : 's'}`, rerender); return; }
   if (t.closest('[data-del]')) { d.items.splice(i, 1); rerender(); }
 });
 

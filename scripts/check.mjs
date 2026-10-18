@@ -41,6 +41,17 @@ async function swipe(page, sel, dy) {
   await page.waitForTimeout(400);
 }
 
+// Press on `loc`, move by (dx, dy) in small steps, let go: mouse pointer events.
+async function dragBy(page, loc, dx, dy) {
+  const b = await loc.boundingBox();
+  const x = b.x + b.width / 2, y = b.y + b.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(x + (dx * i) / 12, y + (dy * i) / 12);
+  await page.mouse.up();
+  await page.waitForTimeout(450);
+}
+
 const browser = await engine.launch();
 const ctxOpts = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: 'dark', hasTouch: true, isMobile: process.env.ENGINE !== 'firefox' };
 const errors = [];
@@ -177,6 +188,24 @@ await page.waitForTimeout(300);
 await swipe(page, '.pick-list', 260);
 ok(await page.locator('.sheet-wrap').count() === 0, 'swiping down on the list closes the picker');
 
+// Swipe a set left to delete it, then Undo
+const lat = page.locator('.ex').nth(4);
+await lat.locator('[data-addset]').click();
+const latSets = await lat.locator('.set-row').count();
+await dragBy(page, lat.locator('.set-row').first().locator('.set-no'), -260, 0);
+ok(await lat.locator('.set-row').count() === latSets - 1, 'swiping a set left deletes it');
+ok(await page.locator('.sheet-wrap').count() === 0, 'the swipe does not open the set menu');
+await page.screenshot({ path: out + '3c-set-deleted.png' });
+await page.click('.toast-undo');
+await page.waitForTimeout(200);
+ok(await lat.locator('.set-row').count() === latSets, 'Undo brings the set back');
+await dragBy(page, lat.locator('.set-row').first().locator('.set-no'), -40, 0);
+ok(await lat.locator('.set-row').count() === latSets, 'a short swipe springs back');
+await page.locator('.ex').first().locator('[data-exmenu]').click();
+ok(await page.locator('.sheet .menu button', { hasText: 'Reorder exercises' }).count() === 1, 'workout menu offers Reorder exercises');
+await page.locator('.sheet [data-cancel]').click();
+await page.waitForTimeout(300);
+
 // Minimise, resume, reload
 await page.click('[data-min]');
 await page.waitForSelector('#resume:not([hidden])');
@@ -219,6 +248,19 @@ await page.waitForSelector('[data-range]');
 ok(await page.locator('[data-range]').first().inputValue() === '8-10', 'editor shows the rep range');
 await page.waitForTimeout(800);
 await page.screenshot({ path: out + '6-editor.png' });
+// Reorder: hold the first exercise and drag it one place down
+const names = () => page.locator('.r-item .r-name b').allTextContents();
+const before = await names();
+await page.locator('[data-reorder]').first().click();
+await page.waitForSelector('.ro-row');
+await page.waitForTimeout(350);
+const step = await page.locator('.ro-row').nth(1).evaluate((n) => n.getBoundingClientRect().top - n.previousElementSibling.getBoundingClientRect().top);
+await dragBy(page, page.locator('.ro-row').first(), 0, step * 1.2);
+await page.screenshot({ path: out + '6b-reorder.png' });
+await page.click('.sheet [data-done]');
+await page.waitForTimeout(300);
+const after = await names();
+ok(after[0] === before[1] && after[1] === before[0], `dragging reorders the routine (${after.slice(0, 2).join(', ')})`);
 await page.click('[data-cancel]');
 
 // History

@@ -155,8 +155,11 @@ button.card:active { background: var(--card2); }
 .sets-head span { text-align: center; }
 .sets-head span:nth-child(2) { text-align: left; }
 .sets-head .ic { width: 16px; height: 16px; vertical-align: -3px; }
-.set-row { padding: 4px; border-radius: 10px; margin-bottom: 2px; transition: background-color .2s; }
-.set-row.done { background: var(--good-soft); }
+.set-swipe { position: relative; margin-bottom: 2px; border-radius: 10px; }
+.set-del { position: absolute; inset: 0; border-radius: 10px; background: var(--danger); color: #fff; display: flex; align-items: center; justify-content: flex-end; padding-right: 18px; font-weight: 600; font-size: 14px; opacity: 0; }
+.set-swipe.dragging .set-del { opacity: 1; }
+.set-row { position: relative; padding: 4px; border-radius: 10px; background-color: var(--bg); touch-action: pan-y; transition: background-color .2s, transform .2s var(--ease); }
+.set-row.done { background: linear-gradient(var(--good-soft), var(--good-soft)) var(--bg); }
 .set-no {
   height: 34px; border-radius: 8px; font-weight: 600; background: var(--card2); display: grid; place-items: center; font-size: 14px;
 }
@@ -381,6 +384,19 @@ body:has(.resume:not([hidden])) { padding-bottom: calc(var(--tabs-h) + var(--saf
   transition: opacity .2s, transform .2s var(--ease); max-width: calc(100vw - 32px);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.act.show { pointer-events: auto; display: flex; align-items: center; gap: 14px; padding: 4px 4px 4px 16px; }
+.toast-undo { color: var(--accent-bg); font-weight: 700; min-height: 36px; padding: 0 12px; border-radius: 8px; }
+
+/* ---------- reorder ---------- */
+.ro-list { display: grid; gap: 6px; margin-bottom: 14px; }
+.ro-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px; min-height: 56px; border-radius: 12px; background: var(--card2); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab; }
+.ro-row img { pointer-events: none; -webkit-user-drag: none; }
+.ro-list.sorting .ro-row { transition: transform .16s var(--ease); }
+.ro-list .ro-row.lifted { transition: none; position: relative; z-index: 1; background: var(--line); box-shadow: 0 10px 24px rgba(0, 0, 0, .45); cursor: grabbing; }
+.ro-txt { flex: 1; min-width: 0; display: grid; }
+.ro-txt b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ro-txt small { color: var(--ink2); font-size: 13px; }
+.ic.grip { color: var(--ink3); flex: none; }
 
 /* ---------- Lift 2 ---------- */
 a.btn { text-decoration: none; color: inherit; }
