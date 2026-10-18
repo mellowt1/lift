@@ -336,7 +336,12 @@ function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
     if (go) { go.disabled = !picked.length; go.textContent = picked.length ? `Add ${picked.length} exercise${picked.length > 1 ? 's' : ''}` : 'Add exercises'; }
   };
   draw();
-  $('[data-q]', s.el).addEventListener('input', (e) => { q = e.target.value; draw(); });
+  // Typing searches every exercise: a muscle chip picked earlier goes back to All.
+  $('[data-q]', s.el).addEventListener('input', (e) => {
+    q = e.target.value;
+    if (q.trim() && muscle) { muscle = ''; for (const c of s.el.querySelectorAll('[data-m]')) c.classList.toggle('on', c.dataset.m === ''); }
+    draw();
+  });
   s.el.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-m]');
     if (chip) {
@@ -1200,7 +1205,11 @@ VIEWS.exercises = () => `<header class="bar"><button class="icon-btn" data-back 
     <div class="list card" data-exlist>${exList()}</div>
   </div>`;
 $('#view').addEventListener('input', (e) => {
-  if (cur().view === 'exercises' && e.target.matches('[data-exq]')) { exQuery = e.target.value; $('[data-exlist]').innerHTML = exList(); }
+  if (cur().view === 'exercises' && e.target.matches('[data-exq]')) {
+    exQuery = e.target.value;
+    if (exQuery.trim() && exMuscle) { exMuscle = ''; for (const c of document.querySelectorAll('[data-exm]')) c.classList.toggle('on', c.dataset.exm === ''); }
+    $('[data-exlist]').innerHTML = exList();
+  }
 });
 $('#view').addEventListener('click', (e) => {
   if (cur().view !== 'exercises') return;

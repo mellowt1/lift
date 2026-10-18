@@ -144,7 +144,10 @@ await page.screenshot({ path: out + '2b-active-full.png', fullPage: true });
 // Picker: own list first, the database once you search
 await page.click('[data-addex]');
 await page.waitForSelector('.pick-row');
+await page.click('[data-m="Chest"]');
 await page.fill('[data-q]', 'pulldown');
+await page.waitForTimeout(200);
+ok(await page.locator('[data-m=""].on').count() === 1 && await page.locator('.pick-row').count() > 1, 'typing a search drops the Chest filter and searches everything');
 await page.waitForTimeout(200);
 ok(await page.locator('.pick-sec').count() === 1, 'search shows More exercises from the database');
 await page.screenshot({ path: out + '3-picker.png' });
