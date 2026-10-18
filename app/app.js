@@ -1,4 +1,4 @@
-import { BUILT_IN, MUSCLES, EQUIPMENT, HEVY_ALIAS, HOWTO, photoUrl } from './exercises.js';
+import { BUILT_IN, MUSCLES, EQUIPMENT, HEVY_ALIAS, HOWTO, TAGS, photoUrl } from './exercises.js';
 import {
   uid, toUnit, fromUnit, fmtNum, fmtW, fmtBig, fmtClock, fmtDuration, parseTime, parseNum, e1rm, isWork,
   workoutVolume, workoutSetCount, bests, prsFor, PR_LABEL, previousSets, weeklyCounts, streakWeeks, progression, weekStart,
@@ -54,6 +54,8 @@ const infoFor = (e) => {
 // Search words as typed, made forgiving: "raises" finds "Raise", "laying" finds "Lying".
 const searchWords = (q) => q.toLowerCase().split(/\s+/).filter(Boolean)
   .map((w) => (w === 'laying' ? 'lying' : w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
+// What a search looks through: name, muscle and any extra words in TAGS.
+const hay = (e) => `${e.name} ${e.muscle} ${TAGS[e.id] || ''}`.toLowerCase();
 const LIB_REFS = new Set(BUILT_IN.map((b) => b.ref).filter(Boolean));
 function buildExMap() {
   const more = [...exdb.values()].map((d) => ({ id: 'db:' + d.id, name: d.name, muscle: d.muscle, equip: d.equip, kind: d.kind, ref: d.id, db: true }));
@@ -335,7 +337,7 @@ function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
   const list = $('[data-list]', s.el);
   const draw = () => {
     const words = searchWords(q);
-    const fits = (e) => (!muscle || e.muscle === muscle) && words.every((w) => e.name.toLowerCase().includes(w) || e.muscle.toLowerCase().includes(w));
+    const fits = (e) => (!muscle || e.muscle === muscle) && words.every((w) => hay(e).includes(w));
     const rows = allExercises().filter(fits);
     // The big database only shows once you search or pick a muscle, so the list stays short.
     const more = words.length || muscle ? moreExercises().filter(fits).slice(0, 120) : [];
@@ -1318,7 +1320,7 @@ function exList() {
   const words = searchWords(exQuery);
   const counts = {};
   for (const wk of db.workouts) for (const ex of wk.exercises) counts[ex.exId] = (counts[ex.exId] || 0) + 1;
-  const fits = (e) => (!exMuscle || e.muscle === exMuscle) && words.every((w) => e.name.toLowerCase().includes(w) || e.muscle.toLowerCase().includes(w));
+  const fits = (e) => (!exMuscle || e.muscle === exMuscle) && words.every((w) => hay(e).includes(w));
   const rows = allExercises().filter(fits);
   const more = words.length || exMuscle ? moreExercises().filter(fits).slice(0, 120) : [];
   if (!rows.length && !more.length) return `<p class="empty">No match. Tap New to add “${esc(exQuery)}”.</p>`;

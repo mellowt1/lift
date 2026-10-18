@@ -41,6 +41,10 @@ const ROWS = [
   ['front-raise-db', 'Front Raise (Dumbbell)', 'Shoulders', 'Dumbbell', 'wr'],
   ['reverse-fly-db', 'Reverse Fly (Dumbbell)', 'Shoulders', 'Dumbbell', 'wr'],
   ['rear-delt-m', 'Rear Delt Fly (Machine)', 'Shoulders', 'Machine', 'wr'],
+  ['push-up-plus', 'Push-Up Plus', 'Shoulders', 'Bodyweight', 'r'],
+  ['serratus-punch-cable', 'Serratus Punch (Cable)', 'Shoulders', 'Cable', 'wr'],
+  ['wall-slide', 'Wall Slide', 'Shoulders', 'Bodyweight', 'r'],
+  ['prone-y-raise-db', 'Prone Y Raise (Dumbbell)', 'Shoulders', 'Dumbbell', 'wr'],
 
   ['curl-bb', 'Bicep Curl (Barbell)', 'Biceps', 'Barbell', 'wr'],
   ['curl-ez', 'EZ Bar Curl', 'Biceps', 'Barbell', 'wr'],
@@ -134,6 +138,49 @@ export const HOWTO = {
       'Do all reps on one side, then turn over. Add an ankle weight when bodyweight gets easy.',
     ],
   },
+  'push-up-plus': {
+    prim: ['Serratus anterior'], sec: ['Chest', 'Triceps'],
+    steps: [
+      'Start in a push-up position (or on your knees), hands under your shoulders, body in a straight line.',
+      'Keep your arms straight and let your chest sink a little so your shoulder blades come together.',
+      'Push the floor away and round your upper back up as far as you can, spreading the shoulder blades apart. Hold 1–2 seconds.',
+      'Lower back to the start and repeat. When it gets easy, do a full push-up before each push-away.',
+    ],
+  },
+  'serratus-punch-cable': {
+    prim: ['Serratus anterior'], sec: ['Shoulders'],
+    steps: [
+      'Set a cable at chest height with a single handle. Stand facing away from it, handle in one hand, arm straight out in front at shoulder height.',
+      'Keep the elbow locked and punch forward by reaching your shoulder blade around your ribs. The hand only moves a few centimetres.',
+      'Hold 1 second, then let the shoulder blade slide back slowly, still without bending the elbow.',
+      'Do all reps, then switch arms. Lying on your back and pushing a dumbbell up to the ceiling works the same way.',
+    ],
+  },
+  'wall-slide': {
+    prim: ['Serratus anterior', 'Lower traps'], sec: ['Shoulders'],
+    steps: [
+      'Stand with your head, upper back and backside against a wall, feet a small step forward.',
+      'Raise your arms into a W: elbows bent about 90°, backs of the forearms and hands against the wall as far as is comfortable.',
+      'Slide your arms up the wall into a Y, keeping contact and not letting your lower back arch. Let the shoulder blades turn up and around.',
+      'Slide slowly back down to the W, drawing the shoulder blades down and back.',
+    ],
+  },
+  'prone-y-raise-db': {
+    prim: ['Lower traps'], sec: ['Shoulders', 'Middle back'],
+    steps: [
+      'Lie face down on a bench set to about 30–45°, a light dumbbell in each hand, arms hanging straight down, thumbs up.',
+      'Draw your shoulder blades back and down, then raise your arms forward and out into a Y, in line with your ears.',
+      'Hold 1–2 seconds at the top without shrugging, then lower slowly.',
+      'Go light (1–4 kg). The shoulder blades do the work, not the neck.',
+    ],
+  },
+};
+
+// Extra search words, so a search for the problem finds the exercises for it.
+const SCAP = 'winged scapula shoulder blade serratus';
+export const TAGS = {
+  'push-up-plus': SCAP, 'serratus-punch-cable': SCAP, 'wall-slide': SCAP, 'prone-y-raise-db': SCAP + ' lower trap',
+  'face-pull': SCAP, 'db:Dumbbell_Scaption': SCAP, 'db:Band_Pull_Apart': SCAP, 'db:Scapular_Pull-Up': SCAP,
 };
 
 export const BUILT_IN = ROWS.map(([id, name, muscle, equip, kind]) => ({ id, name, muscle, equip, kind, ref: REF[id] || null }));
