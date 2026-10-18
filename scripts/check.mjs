@@ -200,7 +200,7 @@ await page.waitForSelector('[data-hevyfile]', { state: 'attached' });
 await page.setInputFiles('[data-hevyfile]', 'screenshots/hevy-test.csv');
 await page.waitForSelector('.sheet [data-yes]');
 const msg = await page.locator('.sheet-text').textContent();
-ok(msg.includes('1 matched') && msg.includes('1 added as your own'), `import matches names (${msg})`);
+ok(msg.includes('1 matched to Lift') && msg.includes('1 added as your own'), `import matches names (${msg})`);
 await page.waitForTimeout(300);
 await page.screenshot({ path: out + '10-hevy.png' });
 await page.click('.sheet [data-yes]');

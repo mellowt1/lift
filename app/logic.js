@@ -200,15 +200,16 @@ export function suggest(prev, lo, hi, step) {
   return { w: Math.round((up ? top + step : top) * 1000) / 1000, up, last: top };
 }
 
-// The smallest offered range that holds every rep count; ties go to the one
-// whose top sits closest above the best set.
+// Range for the reps someone usually does: the narrowest offered range around the
+// median set, ties to the one whose top is nearest. One odd set (a 3-rep grinder
+// or a 24-rep burnout) does not stretch it. Past 20 reps: the five below the median.
 export function rangeFor(reps) {
-  const r = reps.filter((n) => n > 0);
+  const r = reps.filter((n) => n > 0).sort((a, b) => a - b);
   if (!r.length) return DEFAULT_RANGE;
-  const min = Math.min(...r), max = Math.max(...r);
-  const fits = RANGES.filter(([lo, hi]) => lo <= min && hi >= max);
-  if (!fits.length) return [min, max];
-  fits.sort((a, b) => (a[1] - a[0]) - (b[1] - b[0]) || (a[1] - max) - (b[1] - max));
+  const mid = r.length % 2 ? r[(r.length - 1) / 2] : (r[r.length / 2 - 1] + r[r.length / 2]) / 2;
+  const fits = RANGES.filter(([lo, hi]) => lo <= mid && hi >= mid);
+  if (!fits.length) { const m = Math.round(mid); return [Math.max(1, m - 5), m]; }
+  fits.sort((a, b) => (a[1] - a[0]) - (b[1] - b[0]) || (a[1] - mid) - (b[1] - mid));
   return fits[0];
 }
 
@@ -344,18 +345,21 @@ export function kindFromSets(sets) {
   return 't';
 }
 
-// Names compared without case, spaces or punctuation: "Pull Up" = "Pull-up".
-const nameKey = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+// Names compared without case, punctuation or plural s: "Pull Ups" = "Pull-up".
+const nameKey = (s) => String(s).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((w) => w.replace(/(?<=..)s$/, '')).join('');
+const hasBrackets = (s) => /\(.*\)/.test(s);
 const bareKey = (s) => nameKey(String(s).replace(/\(.*?\)/g, ''));
 
-// Lift exercise for a Hevy name: exact match first, then the name without
-// "(Cable)"-style brackets if only one exercise fits. Null means make a new one.
-export function matchExercise(title, list) {
+// Lift exercise for a Hevy name: exact match first. Then, when only one side names
+// the equipment ("Face Pull" vs "Face Pull (Cable)"), the name without brackets if
+// just one exercise fits. Two different brackets never match: a machine fly is not
+// a dumbbell fly. Null means make a new one.
+export function matchExercise(title, list, { exactOnly = false } = {}) {
   const k = nameKey(title);
   const exact = list.find((e) => nameKey(e.name) === k);
-  if (exact) return exact;
+  if (exact || exactOnly) return exact || null;
   const b = bareKey(title);
-  const loose = list.filter((e) => bareKey(e.name) === b);
+  const loose = list.filter((e) => bareKey(e.name) === b && !(hasBrackets(e.name) && hasBrackets(title)));
   return loose.length === 1 ? loose[0] : null;
 }
 
@@ -386,10 +390,11 @@ export function routinesFromHistory(workouts, since, kindOf) {
   return out.sort((a, b) => a.last - b.last);
 }
 
-// Gym days read from history: weekdays trained at least twice in the last 8 weeks.
+// Gym days read from history: weekdays trained in at least 4 of the last 8 weeks.
+// Someone who trains on different days each week gets none, and taps them in.
 export function daysFromHistory(workouts, now = Date.now()) {
   const since = now - 56 * 86400000;
-  const n = [0, 0, 0, 0, 0, 0, 0];
-  for (const w of workouts) if (w.start >= since) n[dayIndex(w.start)]++;
-  return n.map((x) => x >= 2);
+  const weeks = [0, 1, 2, 3, 4, 5, 6].map(() => new Set());
+  for (const w of workouts) if (w.start >= since) weeks[dayIndex(w.start)].add(weekStart(w.start));
+  return weeks.map((s) => s.size >= 4);
 }

@@ -124,6 +124,27 @@ const REF = {
 
 export const BUILT_IN = ROWS.map(([id, name, muscle, equip, kind]) => ({ id, name, muscle, equip, kind, ref: REF[id] || null }));
 
+// Hevy names that differ from Lift's (lower case) → a built-in id or "db:<free-exercise-db id>".
+// Names that already match, give or take punctuation and plurals, need no entry.
+export const HEVY_ALIAS = {
+  'chest fly (machine)': 'pec-deck',
+  'butterfly (pec deck)': 'pec-deck',
+  'rear delt reverse fly (machine)': 'rear-delt-m',
+  'rear delt reverse fly (dumbbell)': 'reverse-fly-db',
+  'seated cable row - bar grip': 'cable-row',
+  'seated cable row - v grip (cable)': 'cable-row',
+  'triceps rope pushdown': 'pushdown',
+  'triceps pushdown': 'pushdown',
+  'seated shoulder press (machine)': 'shoulder-press-m',
+  'iso-lateral high row (machine)': 'db:Leverage_High_Row',
+  'reverse grip lat pulldown (cable)': 'db:Underhand_Cable_Pulldowns',
+  'scapular pull ups': 'db:Scapular_Pull-Up',
+  'overhead plate raise': 'db:Front_Plate_Raise',
+  'stair machine (floors)': 'db:Stairmaster',
+  'stair machine': 'db:Stairmaster',
+  'back extension (weighted hyperextension)': 'db:Hyperextensions_Back_Extensions',
+};
+
 // Photos load from jsDelivr, pinned to one commit so they never change under us.
 export const EXDB_COMMIT = 'f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5';
 export const photoUrl = (ref, n = 0) => `https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@${EXDB_COMMIT}/exercises/${ref}/${n}.jpg`;

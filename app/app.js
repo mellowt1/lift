@@ -1,4 +1,4 @@
-import { BUILT_IN, MUSCLES, EQUIPMENT, photoUrl } from './exercises.js';
+import { BUILT_IN, MUSCLES, EQUIPMENT, HEVY_ALIAS, photoUrl } from './exercises.js';
 import {
   uid, toUnit, fromUnit, fmtNum, fmtW, fmtBig, fmtClock, fmtDuration, parseTime, parseNum, e1rm, isWork,
   workoutVolume, workoutSetCount, bests, prsFor, PR_LABEL, previousSets, weeklyCounts, streakWeeks, progression, weekStart,
@@ -748,7 +748,7 @@ function itemLine(it, done) {
     : `<small>${lo ? 'new' : ''}</small>`;
   return `<button class="t-row" data-open="${it.exId}">
     ${thumb(e)}
-    <span class="t-txt"><b>${esc(e.name)}</b><small>${it.sets} × ${lo ? rangeText(lo, hi) : 'sets'}</small></span>
+    <span class="t-txt"><b>${esc(e.name)}</b><small>${lo ? `${it.sets} × ${rangeText(lo, hi)}` : `${it.sets} set${it.sets === 1 ? '' : 's'}`}</small></span>
     <span class="t-wt">${right}</span>
   </button>`;
 }
@@ -1352,26 +1352,19 @@ $('#view').addEventListener('change', async (e) => {
   const have = new Set(db.workouts.map((w) => Math.round(w.start / 60000) + '|' + w.name));
   const fresh = found.filter((w) => !have.has(Math.round(w.start / 60000) + '|' + w.name));
   const titles = [...new Set(found.flatMap((w) => w.exercises.map((x) => x.title)))];
-  const lib = allExercises();
-  const matched = new Map();
-  for (const t of titles) { const m = matchExercise(t, lib); if (m) matched.set(t, m.id); }
-  const newOnes = titles.filter((t) => !matched.has(t));
+  const plan = new Map(titles.map((t) => [t, planExercise(t, found.flatMap((w) => w.exercises.filter((x) => x.title === t).flatMap((x) => x.sets)))]));
+  const newOnes = [...plan.values()].filter((p) => p.make);
   const range = `${shortFmt.format(found[0].start)} ${new Date(found[0].start).getFullYear()} – ${shortFmt.format(found[found.length - 1].start)} ${new Date(found[found.length - 1].start).getFullYear()}`;
   if (!fresh.length) { toast(`All ${found.length} workouts are already in Lift`); return; }
   const ok = await confirmBox(`Import ${fresh.length} workout${fresh.length === 1 ? '' : 's'}?`,
-    `${range}. ${titles.length} exercises: ${matched.size} matched to Lift's list${newOnes.length ? `, ${newOnes.length} added as your own` : ''}.${fresh.length < found.length ? ` ${found.length - fresh.length} already in Lift are skipped.` : ''}`,
+    `${range}. ${titles.length} exercises: ${titles.length - newOnes.length} matched to Lift's exercises${newOnes.length ? `, ${newOnes.length} added as your own` : ''}.${fresh.length < found.length ? ` ${found.length - fresh.length} already in Lift are skipped.` : ''}`,
     'Import');
   if (!ok) return;
-  for (const t of newOnes) {
-    const sets = found.flatMap((w) => w.exercises.filter((x) => x.title === t).flatMap((x) => x.sets));
-    const ex = { id: 'c-' + uid(), name: t, muscle: 'Other', equip: 'Other', kind: kindFromSets(sets), custom: true, fromHevy: true };
-    db.custom.push(ex);
-    matched.set(t, ex.id);
-  }
+  for (const p of newOnes) db.custom.push(p.make);
   for (const w of fresh) {
     db.workouts.push({
       id: uid(), name: w.name, start: w.start, end: w.end, routineId: null, src: 'hevy',
-      exercises: w.exercises.map((x) => ({ exId: matched.get(x.title), note: x.note, sets: x.sets })),
+      exercises: w.exercises.map((x) => ({ exId: plan.get(x.title).id, note: x.note, sets: x.sets })),
     });
   }
   save();
@@ -1380,6 +1373,20 @@ $('#view').addEventListener('change', async (e) => {
   rerender();
   offerRotation();
 });
+
+// Hevy exercise → Lift id. An alias or a name match keeps one history and the photos.
+// Logged differently in Hevy (a weighted back extension against a reps-only one), or no
+// match at all: it becomes one of yours, still with the closest match's photos.
+const EQUIP_WORDS = ['Dumbbell', 'Barbell', 'Cable', 'Machine', 'Kettlebell', 'Bodyweight'];
+function planExercise(title, sets) {
+  const kind = kindFromSets(sets);
+  const alias = HEVY_ALIAS[title.toLowerCase()];
+  const hit = (alias && getEx(alias)) || matchExercise(title, allExercises()) || matchExercise(title, moreExercises(), { exactOnly: true });
+  if (hit && hit.kind === kind) return { id: hit.id };
+  const equip = hit?.equip || EQUIP_WORDS.find((w) => title.toLowerCase().includes(w.toLowerCase())) || 'Other';
+  const make = { id: 'c-' + uid(), name: title, muscle: hit?.muscle || 'Other', equip, kind, ref: hit?.ref || null, custom: true, fromHevy: true };
+  return { id: make.id, make };
+}
 
 // Routines from the workouts you repeat (last 90 days), oldest-done first so the
 // rotation carries on where Hevy left off. Past workouts with the same name get linked.

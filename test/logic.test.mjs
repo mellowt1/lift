@@ -145,5 +145,19 @@ test('routines and gym days from history', () => {
   const r = routinesFromHistory(hist, at(1), () => 'wr');
   assert.deepEqual(r.map((x) => x.name), ['Pull', 'Push'], 'Legs only once; Pull done longest ago comes first');
   assert.deepEqual(r[0].items[0], { exId: 'x', sets: 3, lo: 8, hi: 10 });
-  assert.deepEqual(daysFromHistory(hist, at(16)), [true, false, true, false, false, false, false]);
+  assert.deepEqual(daysFromHistory(hist, at(16)), [false, false, false, false, false, false, false], 'two weeks is not a pattern');
+  const mondays = [5, 12, 19, 26].map((d) => ({ start: new Date(2026, 9, d, 18).getTime() }));
+  assert.deepEqual(daysFromHistory(mondays, at(27)), [true, false, false, false, false, false, false], 'four Mondays is');
+});
+
+test('rep range ignores one odd set', () => {
+  assert.deepEqual(rangeFor([12, 10, 8, 3]), [8, 10]);
+  assert.deepEqual(rangeFor([40, 40, 40]), [35, 40]);
+});
+
+test('Hevy names: plurals match, different equipment does not', () => {
+  const lib = [{ name: 'Chest Fly (Dumbbell)' }, { name: 'Cable Fly Crossover' }, { name: 'Scapular Pull-Up' }];
+  assert.equal(matchExercise('Chest Fly (Machine)', lib), null);
+  assert.equal(matchExercise('Cable Fly Crossovers', lib).name, 'Cable Fly Crossover');
+  assert.equal(matchExercise('Scapular Pull Ups', lib, { exactOnly: true }).name, 'Scapular Pull-Up');
 });
