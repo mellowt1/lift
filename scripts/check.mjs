@@ -14,6 +14,33 @@ const out = `screenshots/${process.env.ENGINE || 'chromium'}-`;
 let fails = 0;
 const ok = (c, m) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails++; };
 
+// A one-finger vertical swipe (dy > 0 = down) starting in the middle of `sel`, as touch events.
+async function swipe(page, sel, dy) {
+  await page.evaluate(async ([sel, dy]) => {
+    const el = document.querySelector(sel);
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + Math.min(r.height / 2, 120);
+    // Desktop WebKit has no Touch constructor: fake the touch list on a plain event there.
+    const fire = (type, cy) => {
+      const t = { identifier: 1, target: el, clientX: x, clientY: cy };
+      const touches = type === 'touchend' ? [] : [t];
+      let ev;
+      try {
+        const real = new Touch(t);
+        ev = new TouchEvent(type, { bubbles: true, cancelable: true, touches: touches.length ? [real] : [], changedTouches: [real] });
+      } catch {
+        ev = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(ev, { touches: { value: touches }, changedTouches: { value: [t] } });
+      }
+      el.dispatchEvent(ev);
+    };
+    fire('touchstart', y);
+    for (let i = 1; i <= 8; i++) { fire('touchmove', y + (dy * i) / 8); await new Promise((r) => setTimeout(r, 16)); }
+    fire('touchend', y + dy);
+  }, [sel, dy]);
+  await page.waitForTimeout(400);
+}
+
 const browser = await engine.launch();
 const ctxOpts = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: 'dark', hasTouch: true, isMobile: process.env.ENGINE !== 'firefox' };
 const errors = [];
@@ -131,9 +158,21 @@ await page.screenshot({ path: out + '3b-peek.png' });
 await page.click('.peek-go [data-yes]');
 await page.waitForTimeout(300);
 ok(await page.locator('.pick-row.on').count() === 1, 'Add in the preview selects the exercise');
+await page.locator('.pick-peek').first().click();
+await page.waitForSelector('.peek-body .steps li');
+await page.waitForTimeout(300);
+await swipe(page, '.peek-body .steps', 260);
+ok(await page.locator('.sheet-wrap').count() === 1, 'swiping down closes the preview, the picker stays');
+await swipe(page, '.pick-list', -200);
+ok(await page.locator('.sheet-wrap').count() === 1, 'swiping up in the list does not close the picker');
 await page.click('[data-go]');
 await page.waitForTimeout(300);
 ok(await page.locator('.ex').count() === 5, 'picker adds an exercise');
+await page.click('[data-addex]');
+await page.waitForSelector('.pick-row');
+await page.waitForTimeout(300);
+await swipe(page, '.pick-list', 260);
+ok(await page.locator('.sheet-wrap').count() === 0, 'swiping down on the list closes the picker');
 
 // Minimise, resume, reload
 await page.click('[data-min]');

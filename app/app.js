@@ -186,7 +186,52 @@ function openSheet(inner, { tall = false, onClose } = {}) {
     onClose?.();
   };
   wrap.querySelector('.scrim').addEventListener('click', close);
-  return { el: wrap.querySelector('.sheet'), close };
+  const sheet = wrap.querySelector('.sheet');
+  swipeToClose(sheet, wrap.querySelector('.scrim'), close);
+  return { el: sheet, close };
+}
+
+// Drag a sheet down to close it, from anywhere: lists inside it hand over once they are scrolled to the top.
+function swipeToClose(sheet, scrim, close) {
+  let y0 = 0, x0 = 0, t0 = 0, dy = 0, mode = null; // null = undecided, 'drag', 'off'
+  const scrollerAt = (el) => {
+    for (; el && el !== sheet.parentNode; el = el.parentElement) {
+      if (el.scrollHeight > el.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(el).overflowY)) return el;
+    }
+    return null;
+  };
+  let scroller = null;
+  sheet.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { mode = 'off'; return; }
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = performance.now(); dy = 0; mode = null;
+    scroller = scrollerAt(e.target);
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (mode === 'off') return;
+    const d = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (mode === null) {
+      if (Math.abs(d) < 6 && Math.abs(dx) < 6) return;
+      // Only a downward pull, and only when whatever is under the finger can't scroll up any more.
+      mode = d > 0 && Math.abs(d) > Math.abs(dx) && (!scroller || scroller.scrollTop <= 0) ? 'drag' : 'off';
+      if (mode === 'off') return;
+      y0 = e.touches[0].clientY;
+      sheet.style.transition = scrim.style.transition = 'none';
+      document.activeElement?.blur?.();
+    }
+    e.preventDefault();
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    sheet.style.transform = `translateY(${dy}px)`;
+    scrim.style.opacity = String(Math.max(0, 1 - dy / sheet.offsetHeight));
+  }, { passive: false });
+  const end = () => {
+    if (mode !== 'drag') { mode = null; return; }
+    mode = null;
+    const fast = dy / (performance.now() - t0) > 0.6;
+    sheet.style.transition = sheet.style.transform = scrim.style.transition = scrim.style.opacity = '';
+    if (dy > Math.min(140, sheet.offsetHeight * 0.3) || (fast && dy > 40)) close();
+  };
+  sheet.addEventListener('touchend', end);
+  sheet.addEventListener('touchcancel', end);
 }
 
 function actionSheet(title, items) {
