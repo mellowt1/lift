@@ -174,3 +174,222 @@ export function progression(workouts, exId, kind) {
   }
   return pts;
 }
+
+// ---------- Lift 2: rep ranges, suggested weights, rotation ----------
+
+// Rep ranges the routine editor offers. A range drives the suggested weight.
+export const RANGES = [[3, 5], [4, 6], [5, 8], [6, 8], [6, 10], [8, 10], [8, 12], [10, 12], [10, 15], [12, 15], [15, 20]];
+export const DEFAULT_RANGE = [8, 12];
+
+// Sets that count for progression: not warm-ups, not drop sets.
+const counts = (s) => s.type !== 'w' && s.type !== 'd';
+
+// One weight step: 2 kg for dumbbells, 2.5 kg for everything else, 5 lb in pounds.
+export function stepFor(equip, unit) {
+  if (unit === 'lb') return 5 / 2.20462;
+  return equip === 'Dumbbell' ? 2 : 2.5;
+}
+
+// Next weight from last session's sets. Every counting set at the top of the
+// range (or above) means one step up; anything less keeps the weight. Never down.
+export function suggest(prev, lo, hi, step) {
+  const work = prev.filter((s) => counts(s) && s.w);
+  if (!work.length || !hi) return null;
+  const top = Math.max(...work.map((s) => s.w));
+  const up = work.every((s) => (s.r || 0) >= hi);
+  return { w: Math.round((up ? top + step : top) * 1000) / 1000, up, last: top };
+}
+
+// The smallest offered range that holds every rep count; ties go to the one
+// whose top sits closest above the best set.
+export function rangeFor(reps) {
+  const r = reps.filter((n) => n > 0);
+  if (!r.length) return DEFAULT_RANGE;
+  const min = Math.min(...r), max = Math.max(...r);
+  const fits = RANGES.filter(([lo, hi]) => lo <= min && hi >= max);
+  if (!fits.length) return [min, max];
+  fits.sort((a, b) => (a[1] - a[0]) - (b[1] - b[0]) || (a[1] - max) - (b[1] - max));
+  return fits[0];
+}
+
+// Routine to do next: one picked by hand wins, else the one after the last
+// routine finished, else the first. Missed days never move the rotation.
+export function nextRoutine(routines, workouts, pickedId) {
+  if (!routines.length) return null;
+  const picked = pickedId && routines.find((r) => r.id === pickedId);
+  if (picked) return picked;
+  let last = null;
+  for (const w of workouts) {
+    if (w.routineId && routines.some((r) => r.id === w.routineId) && (!last || w.start > last.start)) last = w;
+  }
+  if (!last) return routines[0];
+  const i = routines.findIndex((r) => r.id === last.routineId);
+  return routines[(i + 1) % routines.length];
+}
+
+// Monday = 0 … Sunday = 6.
+export const dayIndex = (ts) => (new Date(ts).getDay() + 6) % 7;
+export function startOfDay(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// Next gym day: today if it is one and nothing is logged yet today.
+export function nextGymDay(days, workouts, now = Date.now()) {
+  if (!days.some(Boolean)) return null;
+  const today = startOfDay(now);
+  const doneToday = workouts.some((w) => w.start >= today);
+  for (let i = doneToday ? 1 : 0; i < 8; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    if (days[dayIndex(d.getTime())]) return d.getTime();
+  }
+  return null;
+}
+
+// ---------- Hevy import ----------
+
+// RFC 4180 CSV: quoted fields, doubled quotes, newlines inside quotes.
+export function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', q = false;
+  text = String(text).replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// Hevy writes "18 Oct 2026, 08:30"; also takes "Oct 18, 2026, 8:30 PM" and ISO.
+export function parseHevyDate(s) {
+  const t = String(s ?? '').trim();
+  let m = t.match(/^(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?$/i);
+  let day, mon, year, h, min, ap;
+  if (m) [, day, mon, year, h, min, ap] = m;
+  else if ((m = t.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?$/i))) [, mon, day, year, h, min, ap] = m;
+  if (m) {
+    const mi = MONTHS.indexOf(mon.toLowerCase());
+    if (mi < 0) return null;
+    let hh = Number(h);
+    if (ap) hh = (hh % 12) + (/pm/i.test(ap) ? 12 : 0);
+    return new Date(Number(year), mi, Number(day), hh, Number(min)).getTime();
+  }
+  if (!/^\d{4}-\d{2}-\d{2}/.test(t)) return null;
+  const iso = Date.parse(t.replace(' ', 'T'));
+  return Number.isFinite(iso) ? iso : null;
+}
+
+const SET_TYPE = { warmup: 'w', dropset: 'd', failure: 'f', normal: 'n' };
+const numOr = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
+
+// Hevy's "Export workouts" CSV → workouts with exercises in the order logged.
+// Weights come back in kg whichever unit the file used.
+export function hevyWorkouts(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) return [];
+  const head = rows[0].map((h) => h.trim().toLowerCase());
+  const col = (name) => head.indexOf(name);
+  const c = {
+    title: col('title'), start: col('start_time'), end: col('end_time'), desc: col('description'),
+    ex: col('exercise_title'), note: col('exercise_notes'), idx: col('set_index'), type: col('set_type'),
+    kg: col('weight_kg'), lb: col('weight_lbs'), reps: col('reps'), sec: col('duration_seconds'),
+  };
+  if (c.ex < 0 || c.start < 0) return [];
+  const byKey = new Map();
+  for (const r of rows.slice(1)) {
+    const start = parseHevyDate(r[c.start]);
+    const exTitle = (r[c.ex] || '').trim();
+    if (start == null || !exTitle) continue;
+    const name = (c.title >= 0 && (r[c.title] || '').trim()) || 'Workout';
+    const key = start + '|' + name;
+    let wk = byKey.get(key);
+    if (!wk) {
+      const end = c.end >= 0 ? parseHevyDate(r[c.end]) : null;
+      wk = { name, start, end: end && end > start ? end : start + 3600000, note: c.desc >= 0 ? (r[c.desc] || '').trim() : '', exercises: [] };
+      byKey.set(key, wk);
+    }
+    const idx = c.idx >= 0 ? Number(r[c.idx]) : NaN;
+    let ex = wk.exercises[wk.exercises.length - 1];
+    if (!ex || ex.title !== exTitle || idx === 0) {
+      ex = { title: exTitle, note: c.note >= 0 ? (r[c.note] || '').trim() : '', sets: [] };
+      wk.exercises.push(ex);
+    }
+    let w = c.kg >= 0 ? numOr(r[c.kg]) : null;
+    if (w == null && c.lb >= 0) { const lb = numOr(r[c.lb]); w = lb == null ? null : lb / 2.20462; }
+    const reps = c.reps >= 0 ? numOr(r[c.reps]) : null;
+    const t = c.sec >= 0 ? numOr(r[c.sec]) : null;
+    ex.sets.push({ type: SET_TYPE[(r[c.type] || '').trim().toLowerCase()] || 'n', w: w || null, r: reps == null ? null : Math.round(reps), t: t || null });
+  }
+  return [...byKey.values()].sort((a, b) => a.start - b.start);
+}
+
+// How an imported exercise is logged, judged by what its sets carry.
+export function kindFromSets(sets) {
+  if (sets.some((s) => s.w)) return 'wr';
+  if (sets.some((s) => s.r)) return 'r';
+  return 't';
+}
+
+// Names compared without case, spaces or punctuation: "Pull Up" = "Pull-up".
+const nameKey = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+const bareKey = (s) => nameKey(String(s).replace(/\(.*?\)/g, ''));
+
+// Lift exercise for a Hevy name: exact match first, then the name without
+// "(Cable)"-style brackets if only one exercise fits. Null means make a new one.
+export function matchExercise(title, list) {
+  const k = nameKey(title);
+  const exact = list.find((e) => nameKey(e.name) === k);
+  if (exact) return exact;
+  const b = bareKey(title);
+  const loose = list.filter((e) => bareKey(e.name) === b);
+  return loose.length === 1 ? loose[0] : null;
+}
+
+// Routines from history: every workout name done at least twice since `since`
+// becomes one, built from its latest session. Ordered so the one done longest
+// ago comes first: that is the one due next.
+export function routinesFromHistory(workouts, since, kindOf) {
+  const groups = new Map();
+  for (const w of workouts) {
+    if (w.start < since) continue;
+    const g = groups.get(w.name) || [];
+    g.push(w);
+    groups.set(w.name, g);
+  }
+  const out = [];
+  for (const [name, list] of groups) {
+    if (list.length < 2) continue;
+    const latest = list.reduce((a, b) => (b.start > a.start ? b : a));
+    const items = [];
+    for (const ex of latest.exercises) {
+      if (items.some((it) => it.exId === ex.exId)) continue;
+      const work = ex.sets.filter(counts);
+      const [lo, hi] = kindOf(ex.exId) === 'wr' ? rangeFor(work.map((s) => s.r || 0)) : [null, null];
+      items.push({ exId: ex.exId, sets: Math.max(1, Math.min(8, work.length || ex.sets.length)), lo, hi });
+    }
+    if (items.length) out.push({ name, items, last: latest.start, count: list.length });
+  }
+  return out.sort((a, b) => a.last - b.last);
+}
+
+// Gym days read from history: weekdays trained at least twice in the last 8 weeks.
+export function daysFromHistory(workouts, now = Date.now()) {
+  const since = now - 56 * 86400000;
+  const n = [0, 0, 0, 0, 0, 0, 0];
+  for (const w of workouts) if (w.start >= since) n[dayIndex(w.start)]++;
+  return n.map((x) => x >= 2);
+}

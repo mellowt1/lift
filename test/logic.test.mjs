@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtClock, fmtDuration, parseTime, parseNum, e1rm, bests, prsFor, previousSets, weekStart, weeklyCounts, streakWeeks, progression, fmtW } from '../app/logic.js';
+import { suggest, rangeFor, nextRoutine, nextGymDay, parseCSV, parseHevyDate, hevyWorkouts, matchExercise, routinesFromHistory, daysFromHistory, stepFor } from '../app/logic.js';
 
 const DAY = 86400000;
 const wk = (id, start, exId, sets) => ({ id, name: id, start, end: start + 3600000, exercises: [{ exId, note: '', sets }] });
@@ -62,4 +63,87 @@ test('weeks and streak', () => {
   const weeks = weeklyCounts(list, 4, now);
   assert.deepEqual(weeks.map((w) => w.count), [0, 1, 1, 0]);
   assert.equal(progression(list, 'x', 'wr').length, 2);
+});
+
+test('suggested weight goes up only when every set hits the top', () => {
+  const step = stepFor('Cable', 'kg');
+  assert.deepEqual(suggest([S(30, 12, 'w'), S(55, 10), S(55, 10), S(55, 10)], 8, 10, step), { w: 57.5, up: true, last: 55 });
+  assert.deepEqual(suggest([S(70, 8), S(70, 7), S(70, 6)], 6, 8, step), { w: 70, up: false, last: 70 });
+  assert.equal(suggest([S(14, 12), S(14, 12)], 10, 12, stepFor('Dumbbell', 'kg')).w, 16);
+  assert.equal(suggest([S(60, 10), S(40, 15, 'd')], 8, 10, step).up, true, 'drop sets do not block going up');
+  assert.equal(suggest([], 8, 10, step), null);
+});
+
+test('rep range from reps done', () => {
+  assert.deepEqual(rangeFor([10, 10, 9]), [8, 10]);
+  assert.deepEqual(rangeFor([12, 12, 12]), [10, 12]);
+  assert.deepEqual(rangeFor([8, 6, 7]), [6, 8]);
+  assert.deepEqual(rangeFor([]), [8, 12]);
+});
+
+test('rotation goes on from the last routine done', () => {
+  const R = [{ id: 'push' }, { id: 'pull' }, { id: 'legs' }];
+  assert.equal(nextRoutine(R, [], null).id, 'push');
+  const done = [{ start: 1, routineId: 'push' }, { start: 2, routineId: 'pull' }];
+  assert.equal(nextRoutine(R, done, null).id, 'legs');
+  assert.equal(nextRoutine(R, [...done, { start: 3, routineId: 'legs' }], null).id, 'push');
+  assert.equal(nextRoutine(R, done, 'push').id, 'push', 'a picked routine wins');
+  assert.equal(nextRoutine([], done, null), null);
+});
+
+test('next gym day', () => {
+  const wed = new Date(2026, 9, 21, 9).getTime(); // Wed 21 Oct 2026
+  const days = [true, false, true, false, true, true, false];
+  assert.equal(new Date(nextGymDay(days, [], wed)).getDate(), 21, 'today when nothing logged');
+  assert.equal(new Date(nextGymDay(days, [{ start: wed - 3600000 }], wed)).getDate(), 23, 'Friday after training today');
+  assert.equal(nextGymDay([false, false, false, false, false, false, false], [], wed), null);
+});
+
+test('csv and Hevy dates', () => {
+  assert.deepEqual(parseCSV('a,"b, c","d ""q"""\n1,2,3\n'), [['a', 'b, c', 'd "q"'], ['1', '2', '3']]);
+  const d = new Date(parseHevyDate('18 Oct 2026, 08:30'));
+  assert.deepEqual([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()], [2026, 9, 18, 8, 30]);
+  assert.equal(new Date(parseHevyDate('Oct 18, 2026, 8:30 PM')).getHours(), 20);
+  assert.equal(parseHevyDate('junk'), null);
+});
+
+const HEVY = [
+  '"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"',
+  '"Pull","14 Oct 2026, 18:00","14 Oct 2026, 18:55","","Lat Pulldown (Cable)",,"seat 4",0,"warmup",30,12,,,',
+  '"Pull","14 Oct 2026, 18:00","14 Oct 2026, 18:55","","Lat Pulldown (Cable)",,"seat 4",1,"normal",55,10,,,',
+  '"Pull","14 Oct 2026, 18:00","14 Oct 2026, 18:55","","Lat Pulldown (Cable)",,"seat 4",2,"normal",55,9,,,',
+  '"Pull","14 Oct 2026, 18:00","14 Oct 2026, 18:55","","Pull Up",,"",0,"normal",,8,,,',
+  '"Pull","14 Oct 2026, 18:00","14 Oct 2026, 18:55","","Dead Hang",,"",0,"normal",,,,45,',
+  '"Push","16 Oct 2026, 18:00","16 Oct 2026, 19:00","good one","Bench Press (Barbell)",,"",0,"normal",80,8,,,',
+].join('\n');
+
+test('Hevy export becomes workouts', () => {
+  const list = hevyWorkouts(HEVY);
+  assert.equal(list.length, 2);
+  const pull = list[0];
+  assert.equal(pull.name, 'Pull');
+  assert.equal(pull.end - pull.start, 55 * 60000);
+  assert.deepEqual(pull.exercises.map((e) => e.title), ['Lat Pulldown (Cable)', 'Pull Up', 'Dead Hang']);
+  assert.deepEqual(pull.exercises[0].sets.map((s) => s.type), ['w', 'n', 'n']);
+  assert.equal(pull.exercises[0].note, 'seat 4');
+  assert.equal(pull.exercises[2].sets[0].t, 45);
+  assert.equal(list[1].note, 'good one');
+});
+
+test('Hevy names match Lift exercises', () => {
+  const lib = [{ name: 'Pull-up' }, { name: 'Lat Pulldown (Cable)' }, { name: 'Face Pull (Cable)' }, { name: 'Bench Press (Barbell)' }, { name: 'Bench Press (Dumbbell)' }];
+  assert.equal(matchExercise('Pull Up', lib).name, 'Pull-up');
+  assert.equal(matchExercise('Face Pull', lib).name, 'Face Pull (Cable)');
+  assert.equal(matchExercise('Bench Press', lib), null, 'two bench presses: no guess');
+  assert.equal(matchExercise('Dead Hang', lib), null);
+});
+
+test('routines and gym days from history', () => {
+  const at = (d, h = 18) => new Date(2026, 9, d, h).getTime();
+  const mk = (name, d, w) => ({ name, start: at(d), exercises: [{ exId: 'x', sets: [S(w, 10), S(w, 10), S(w, 9)] }] });
+  const hist = [mk('Pull', 5, 50), mk('Push', 7, 80), mk('Pull', 12, 55), mk('Push', 14, 82.5), mk('Legs', 15, 100)];
+  const r = routinesFromHistory(hist, at(1), () => 'wr');
+  assert.deepEqual(r.map((x) => x.name), ['Pull', 'Push'], 'Legs only once; Pull done longest ago comes first');
+  assert.deepEqual(r[0].items[0], { exId: 'x', sets: 3, lo: 8, hi: 10 });
+  assert.deepEqual(daysFromHistory(hist, at(16)), [true, false, true, false, false, false, false]);
 });

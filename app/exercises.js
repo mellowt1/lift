@@ -95,4 +95,35 @@ const ROWS = [
   ['farmers-walk', "Farmer's Walk", 'Other', 'Dumbbell', 'wr'],
 ];
 
-export const BUILT_IN = ROWS.map(([id, name, muscle, equip, kind]) => ({ id, name, muscle, equip, kind }));
+// Photos and steps for the built-ins come from free-exercise-db (public domain): built-in id → its id there.
+const REF = {
+  'bench-bb': 'Barbell_Bench_Press_-_Medium_Grip', 'incline-bench-bb': 'Barbell_Incline_Bench_Press_-_Medium_Grip',
+  'decline-bench-bb': 'Decline_Barbell_Bench_Press', 'bench-db': 'Dumbbell_Bench_Press', 'incline-bench-db': 'Incline_Dumbbell_Press',
+  'fly-db': 'Dumbbell_Flyes', 'fly-cable': 'Cable_Crossover', 'chest-press-m': 'Leverage_Chest_Press', 'pec-deck': 'Butterfly',
+  'push-up': 'Pushups', 'chest-dip': 'Dips_-_Chest_Version',
+  'deadlift-bb': 'Barbell_Deadlift', 'row-bb': 'Bent_Over_Barbell_Row', 'pendlay-row': 'Bent_Over_Barbell_Row',
+  'tbar-row': 'T-Bar_Row_with_Handle', 'row-db': 'One-Arm_Dumbbell_Row', 'pull-up': 'Pullups', 'pull-up-w': 'Weighted_Pull_Ups',
+  'chin-up': 'Chin-Up', 'lat-pulldown': 'Wide-Grip_Lat_Pulldown', 'cable-row': 'Seated_Cable_Rows', 'row-m': 'Leverage_Iso_Row',
+  'face-pull': 'Face_Pull', 'shrug-db': 'Dumbbell_Shrug', 'back-ext': 'Hyperextensions_Back_Extensions',
+  'ohp-bb': 'Standing_Military_Press', 'shoulder-press-db': 'Dumbbell_Shoulder_Press', 'shoulder-press-m': 'Machine_Shoulder_Military_Press',
+  'arnold-press': 'Arnold_Dumbbell_Press', 'lateral-raise-db': 'Side_Lateral_Raise', 'lateral-raise-cable': 'Cable_Seated_Lateral_Raise',
+  'front-raise-db': 'Front_Dumbbell_Raise', 'reverse-fly-db': 'Reverse_Flyes', 'rear-delt-m': 'Reverse_Machine_Flyes',
+  'curl-bb': 'Barbell_Curl', 'curl-ez': 'Close-Grip_EZ_Bar_Curl', 'curl-db': 'Dumbbell_Bicep_Curl', 'hammer-curl': 'Hammer_Curls',
+  'incline-curl': 'Incline_Dumbbell_Curl', 'preacher-curl': 'Machine_Preacher_Curls', 'curl-cable': 'Standing_Biceps_Cable_Curl',
+  'pushdown': 'Triceps_Pushdown', 'oh-ext-cable': 'Cable_Rope_Overhead_Triceps_Extension', 'tri-ext-db': 'Standing_Dumbbell_Triceps_Extension',
+  'skullcrusher': 'EZ-Bar_Skullcrusher', 'cgbp': 'Close-Grip_Barbell_Bench_Press', 'tri-dip': 'Dips_-_Triceps_Version',
+  'squat-bb': 'Barbell_Squat', 'front-squat': 'Front_Barbell_Squat', 'goblet-squat': 'Goblet_Squat', 'leg-press': 'Leg_Press',
+  'hack-squat': 'Hack_Squat', 'leg-ext': 'Leg_Extensions', 'bulgarian': 'Split_Squat_with_Dumbbells', 'lunge-db': 'Dumbbell_Lunges',
+  'rdl-bb': 'Romanian_Deadlift', 'rdl-db': 'Stiff-Legged_Dumbbell_Deadlift', 'lying-curl': 'Lying_Leg_Curls', 'seated-curl': 'Seated_Leg_Curl',
+  'good-morning': 'Good_Morning', 'hip-thrust': 'Barbell_Hip_Thrust', 'glute-bridge': 'Butt_Lift_Bridge', 'hip-abduction': 'Thigh_Abductor',
+  'kickback-cable': 'One-Legged_Cable_Kickback','calf-standing': 'Standing_Calf_Raises',
+  'calf-seated': 'Seated_Calf_Raise', 'plank': 'Plank', 'crunch': 'Crunches', 'cable-crunch': 'Cable_Crunch',
+  'hanging-leg-raise': 'Hanging_Leg_Raise', 'ab-wheel': 'Ab_Roller', 'russian-twist': 'Russian_Twist', 'treadmill': 'Jogging_Treadmill',
+  'bike': 'Bicycling_Stationary', 'rower': 'Rowing_Stationary', 'jump-rope': 'Rope_Jumping', 'farmers-walk': 'Farmers_Walk',
+};
+
+export const BUILT_IN = ROWS.map(([id, name, muscle, equip, kind]) => ({ id, name, muscle, equip, kind, ref: REF[id] || null }));
+
+// Photos load from jsDelivr, pinned to one commit so they never change under us.
+export const EXDB_COMMIT = 'f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5';
+export const photoUrl = (ref, n = 0) => `https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@${EXDB_COMMIT}/exercises/${ref}/${n}.jpg`;
