@@ -60,7 +60,13 @@ const seed = {
   plan: { days: [true, false, true, false, true, true, false], pick: null },
 };
 await page.addInitScript((s) => { if (!localStorage.getItem('lift.v1')) localStorage.setItem('lift.v1', s); }, JSON.stringify(seed));
-await page.goto(URL_);
+// paul-hub stand-in: keep what Lift sends.
+const sent = [];
+await page.route('https://paul-hub.paul-o-a04.workers.dev/api/lift/**', async (route) => {
+  sent.push({ url: route.request().url(), body: JSON.parse(route.request().postData() || '{}') });
+  await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ ok: true, xp: 1, feed: 1 }) });
+});
+await page.goto(URL_ + '?c=abcdefgh23456789');
 await page.waitForSelector('.next-name');
 ok((await page.textContent('.next-name')) === 'Pull', 'rotation: Pull comes after Push');
 await page.waitForTimeout(1200); // photos
@@ -141,6 +147,12 @@ ok((await page.locator('.upnext').textContent()).includes('Pull'), 'summary says
 await page.waitForTimeout(400);
 await page.screenshot({ path: out + '4-summary.png' });
 await page.screenshot({ path: out + '4b-summary-full.png', fullPage: true });
+await page.waitForTimeout(3500);
+const last = sent[sent.length - 1];
+ok(last && last.url.endsWith('/api/lift/abcdefgh23456789'), 'finishing sends to paul-hub with the code from the link');
+ok(last && last.body.summary.workouts.length === 7 && last.body.summary.workouts[0].name === 'Push' && last.body.summary.workouts[0].prs >= 1, 'the summary has the new workout and its records');
+ok(last && last.body.summary.next.name === 'Pull' && last.body.backup.workouts.length === 7 && !('hub' in last.body.backup.settings), 'next up is Pull; the backup has every workout and not the code');
+ok(!page.url().includes('c='), 'the code is taken out of the address bar');
 await page.click('[data-done]');
 await page.waitForSelector('.next-name');
 ok((await page.textContent('.next-name')) === 'Pull', 'Today moves on to Pull');

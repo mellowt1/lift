@@ -311,6 +311,7 @@ body:has(.resume:not([hidden])) { padding-bottom: calc(var(--tabs-h) + var(--saf
 .set-line select { background: var(--card2); border: 0; border-radius: 8px; padding: 6px 12px; font-weight: 600; }
 .set-note { color: var(--ink2); font-size: 14px; margin: 10px 0; }
 .set-note.dim { color: var(--ink3); font-size: 13px; }
+.set-note.warn { color: var(--gold); font-size: 13px; }
 .settings .row2 { margin: 0; }
 .foot { text-align: center; color: var(--ink3); font-size: 12px; margin: 24px 0 8px; }
 

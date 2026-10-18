@@ -14,6 +14,7 @@ const EMPTY = () => ({
   custom: [], routines: [], workouts: [], active: null, restFor: {}, settings: { unit: 'kg', rest: 90 }, lastBackup: null,
   // Gym days Monday-first, and a routine picked by hand to go next (cleared when one is finished).
   plan: { days: [true, false, true, false, true, false, false], pick: null },
+  sync: {}, // paul-hub: { at, dirty, error }
 });
 
 function load() {
@@ -32,6 +33,8 @@ let saveTimer = 0;
 function save() {
   clearTimeout(saveTimer);
   try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { toast('Could not save on this device'); }
+  // Set by set during a workout stays on the phone; the hub hears once it is finished.
+  if (!db.active) syncSoon();
 }
 function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); }
 navigator.storage?.persist?.().catch(() => {});
@@ -1303,6 +1306,7 @@ VIEWS.profile = () => {
     <div class="card list">
       <button class="row" data-exlib>${icon('list')}<span><b>Exercises</b><small>${allExercises().length} in your list · ${exdb.size || 868} more with photos</small></span>${icon('chev', 'dim')}</button>
     </div>
+    ${hubCard()}
     <h2 class="month">Hevy</h2>
     <div class="card settings">
       <p class="set-note">In Hevy: Profile › Settings › Export &amp; Import Data › Export Workouts. Then pick that CSV file here. Importing twice is safe: workouts already in Lift are skipped.</p>
@@ -1416,6 +1420,125 @@ async function offerRotation() {
   scrollTo(0, 0);
 }
 
+// ---------- paul-hub ----------
+// After a workout and after any change to the plan, Lift sends paul-hub a summary and a full
+// backup. The hub shows the next routine and the last workout on Morning, pays Strength XP in
+// Hiscores and keeps the backup. The code is the to-do's: from a link ending ?c=<code>, from the
+// to-do or Morning on this site, or typed in Profile. Without one, nothing leaves the phone.
+const HUB = 'https://paul-hub.paul-o-a04.workers.dev';
+const CODE_RE = /^[a-z0-9]{16}$/;
+let syncTimer = 0;
+
+function takeCode() {
+  const params = new URLSearchParams(location.search);
+  const fromLink = (params.get('c') || '').trim().toLowerCase();
+  if (CODE_RE.test(fromLink)) {
+    db.settings.hub = fromLink;
+    params.delete('c');
+    const rest = params.toString();
+    history.replaceState(history.state, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+    return;
+  }
+  if (db.settings.hub) return;
+  for (const k of ['todo.code', 'morning.code']) {
+    try { const c = JSON.parse(localStorage.getItem(k)); if (CODE_RE.test(c || '')) { db.settings.hub = c; return; } } catch {}
+  }
+}
+
+const ymd = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+function hubSummary() {
+  const done = doneWorkouts();
+  const r = next();
+  const nd = nextGymDay(db.plan.days, db.workouts);
+  return {
+    next: r ? { name: r.name, items: r.items.map((it) => {
+      const [lo, hi] = rangeOf(it);
+      const s = nextFor(it.exId, lo, hi, done);
+      return { name: getEx(it.exId).name, sets: it.sets, range: rangeText(lo, hi), kg: s ? s.w : null, up: !!s?.up };
+    }) } : null,
+    nextDay: nd ? ymd(nd) : null,
+    rotation: db.routines.map((x) => x.name),
+    days: db.plan.days,
+    // Records only for the latest few: the feed only mentions recent workouts.
+    workouts: done.slice(0, 500).map((w, i) => ({
+      id: w.id, name: w.name, start: w.start, end: w.end, volume: Math.round(workoutVolume(w)), sets: workoutSetCount(w),
+      prs: i < 10 ? prsFor(db.workouts, w, kindOf).length : 0,
+    })),
+  };
+}
+
+function syncSoon(wait = 2500) {
+  if (!db.settings.hub) return;
+  db.sync = { ...db.sync, dirty: true };
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncHub, wait);
+}
+
+async function syncHub() {
+  clearTimeout(syncTimer);
+  const code = db.settings.hub;
+  if (!code || !navigator.onLine) return false;
+  const { active, sync, settings, ...data } = db;
+  const backup = { app: 'lift', version: 2, exported: new Date().toISOString(), ...data, settings: { ...settings, hub: undefined } };
+  try {
+    const res = await fetch(`${HUB}/api/lift/${code}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ summary: hubSummary(), backup }),
+    });
+    const out = await res.json().catch(() => ({}));
+    db.sync = res.ok ? { at: Date.now(), dirty: false, error: null } : { ...db.sync, dirty: true, error: res.status === 404 ? 'That code is not known to paul-hub' : `paul-hub said ${res.status}` };
+    try { localStorage.setItem(KEY, JSON.stringify(db)); } catch {}
+    if (cur().view === 'profile') rerender();
+    return res.ok ? out : false;
+  } catch {
+    db.sync = { ...db.sync, dirty: true };
+    return false;
+  }
+}
+addEventListener('online', () => { if (db.sync?.dirty) syncSoon(500); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && db.settings.hub && !db.active && (db.sync?.dirty || Date.now() - (db.sync?.at || 0) > 6 * 3600e3)) syncSoon(800);
+});
+
+function hubCard() {
+  const s = db.sync || {};
+  const status = !db.settings.hub ? 'Not connected. Workouts stay on this phone.'
+    : s.error ? s.error
+      : s.at ? `Connected. Last sent ${dayFmt.format(s.at)} ${timeFmt.format(s.at)}${s.dirty ? ' · changes waiting' : ''}.`
+        : 'Connected. Nothing sent yet.';
+  return `<h2 class="month">paul-hub</h2>
+    <div class="card settings">
+      <p class="set-note">Sends each workout to Morning and Hiscores (Strength), and keeps a backup on paul-hub.</p>
+      <p class="set-note${s.error ? ' warn' : ' dim'}">${esc(status)}</p>
+      ${db.settings.hub
+        ? '<div class="row2"><button class="btn soft" data-hubsend>Send now</button><button class="btn ghost" data-hubforget>Disconnect</button></div>'
+        : `<label class="field"><span>Code from your to-do link</span><input data-hubcode inputmode="text" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="16" placeholder="16 letters and digits"></label>
+           <button class="btn soft block" data-hubsave>Connect</button>`}
+    </div>`;
+}
+
+$('#view').addEventListener('click', async (e) => {
+  if (cur().view !== 'profile') return;
+  const t = e.target;
+  if (t.closest('[data-hubsave]')) {
+    const c = ($('[data-hubcode]').value || '').trim().toLowerCase();
+    if (!CODE_RE.test(c)) { toast('The code is 16 letters and digits'); return; }
+    db.settings.hub = c;
+    db.sync = {};
+    save();
+    const ok = await syncHub();
+    toast(ok ? 'Connected to paul-hub' : 'Saved. Sending when paul-hub answers.');
+    rerender();
+  }
+  if (t.closest('[data-hubsend]')) { const ok = await syncHub(); toast(ok ? `Sent${ok.xp ? ` · Strength XP for ${ok.xp} gym day${ok.xp === 1 ? '' : 's'}` : ''}` : 'Could not reach paul-hub'); }
+  if (t.closest('[data-hubforget]')) {
+    if (await confirmBox('Disconnect paul-hub?', 'Lift stops sending. What paul-hub already has stays there.', 'Disconnect', true)) {
+      db.settings.hub = null; db.sync = {}; save(); rerender();
+    }
+  }
+});
+
 // Fetch the photos of every routine exercise once, so they are there without signal.
 function warmPhotos() {
   if (!navigator.onLine) return;
@@ -1462,9 +1585,11 @@ async function exportData() {
 
 // ---------- start ----------
 if (db.active?.rest && db.active.rest.end > Date.now()) { rest.end = db.active.rest.end; rest.total = db.active.rest.total; }
+takeCode();
 history.replaceState({ n: 0 }, '');
 render();
 if (db.active) go({ view: 'active' });
-loadExdb();
+// Send on open when something is waiting or the hub has not heard for a while, once names are loaded.
+loadExdb().then(() => { if (db.settings.hub && !db.active && (db.sync?.dirty || Date.now() - (db.sync?.at || 0) > 6 * 3600e3)) syncSoon(800); });
 warmPhotos();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
