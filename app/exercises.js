@@ -74,6 +74,7 @@ const ROWS = [
 
   ['hip-thrust', 'Hip Thrust (Barbell)', 'Glutes', 'Barbell', 'wr'],
   ['glute-bridge', 'Glute Bridge', 'Glutes', 'Bodyweight', 'r'],
+  ['side-lying-leg-raise', 'Side Lying Leg Raise', 'Glutes', 'Bodyweight', 'r'],
   ['hip-abduction', 'Hip Abduction (Machine)', 'Glutes', 'Machine', 'wr'],
   ['kickback-cable', 'Glute Kickback (Cable)', 'Glutes', 'Cable', 'wr'],
   ['kb-swing', 'Kettlebell Swing', 'Glutes', 'Kettlebell', 'wr'],
@@ -120,6 +121,19 @@ const REF = {
   'calf-seated': 'Seated_Calf_Raise', 'plank': 'Plank', 'crunch': 'Crunches', 'cable-crunch': 'Cable_Crunch',
   'hanging-leg-raise': 'Hanging_Leg_Raise', 'ab-wheel': 'Ab_Roller', 'russian-twist': 'Russian_Twist', 'treadmill': 'Jogging_Treadmill',
   'bike': 'Bicycling_Stationary', 'rower': 'Rowing_Stationary', 'jump-rope': 'Rope_Jumping', 'farmers-walk': 'Farmers_Walk',
+};
+
+// Muscles and steps for built-ins that free-exercise-db lacks or gets wrong (used over its entry, if any).
+export const HOWTO = {
+  'side-lying-leg-raise': {
+    prim: ['Glutes'], sec: ['Abductors'],
+    steps: [
+      'Lie on your side on a mat, legs straight and stacked, head resting on your lower arm. Bend the bottom knee a little for balance.',
+      'Keep your hips stacked and the top foot pointing forward, not up. Raise the top leg to about 45° until you feel the side of your glute working.',
+      'Pause for a second at the top, then lower slowly without letting the legs touch.',
+      'Do all reps on one side, then turn over. Add an ankle weight when bodyweight gets easy.',
+    ],
+  },
 };
 
 export const BUILT_IN = ROWS.map(([id, name, muscle, equip, kind]) => ({ id, name, muscle, equip, kind, ref: REF[id] || null }));

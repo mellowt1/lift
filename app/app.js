@@ -1,4 +1,4 @@
-import { BUILT_IN, MUSCLES, EQUIPMENT, HEVY_ALIAS, photoUrl } from './exercises.js';
+import { BUILT_IN, MUSCLES, EQUIPMENT, HEVY_ALIAS, HOWTO, photoUrl } from './exercises.js';
 import {
   uid, toUnit, fromUnit, fmtNum, fmtW, fmtBig, fmtClock, fmtDuration, parseTime, parseNum, e1rm, isWork,
   workoutVolume, workoutSetCount, bests, prsFor, PR_LABEL, previousSets, weeklyCounts, streakWeeks, progression, weekStart,
@@ -46,6 +46,14 @@ const unit = () => db.settings.unit;
 // free-exercise-db load after start as "db:<id>" and show under "More exercises".
 let exdb = new Map();
 let exMap = new Map();
+// Photos count, muscles and steps for an exercise: free-exercise-db, with Lift's own HOWTO on top.
+const infoFor = (e) => {
+  const own = HOWTO[e.id], base = e.ref ? exdb.get(e.ref) : null;
+  return own ? { photos: 0, ...base, ...own } : base;
+};
+// Search words as typed, made forgiving: "raises" finds "Raise", "laying" finds "Lying".
+const searchWords = (q) => q.toLowerCase().split(/\s+/).filter(Boolean)
+  .map((w) => (w === 'laying' ? 'lying' : w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
 const LIB_REFS = new Set(BUILT_IN.map((b) => b.ref).filter(Boolean));
 function buildExMap() {
   const more = [...exdb.values()].map((d) => ({ id: 'db:' + d.id, name: d.name, muscle: d.muscle, equip: d.equip, kind: d.kind, ref: d.id, db: true }));
@@ -275,7 +283,7 @@ function pickRow(e, picked, multi) {
 // A look at one exercise from the picker, before it goes in: photos, muscles, steps, your last time.
 function peekExercise(id, { multi, picked, onPick }) {
   const e = getEx(id);
-  const info = e.ref ? exdb.get(e.ref) : null;
+  const info = infoFor(e);
   const done = doneWorkouts();
   const times = done.filter((wk) => wk.exercises.some((x) => x.exId === id)).length;
   const last = times ? previousSets(done, id).filter((x) => x.type !== 'w').slice(0, 3) : [];
@@ -310,7 +318,7 @@ function howToHtml(e, info) {
   return `${info ? `<div class="muscles">${info.prim.map((m) => `<span class="chip main">${esc(m)}</span>`).join('')}${info.sec.map((m) => `<span class="chip">${esc(m)}</span>`).join('')}</div>
       <ol class="steps">${info.steps.map((st) => `<li>${esc(st)}</li>`).join('')}</ol>` : e.ref ? '<p class="empty">Steps are still loading.</p>' : '<p class="empty">No photos or steps for this one.</p>'}
       <a class="btn soft block" href="${yt}" target="_blank" rel="noopener">${icon('video')}Watch on YouTube</a>
-      ${e.ref ? '<p class="credit">Photos and steps: free-exercise-db (public domain).</p>' : ''}`;
+      ${e.ref && !HOWTO[e.id] ? '<p class="credit">Photos and steps: free-exercise-db (public domain).</p>' : ''}`;
 }
 
 function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
@@ -326,7 +334,7 @@ function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
     ${multi ? '<button class="btn primary block pick-go" data-go disabled>Add exercises</button>' : ''}`, { tall: true });
   const list = $('[data-list]', s.el);
   const draw = () => {
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const words = searchWords(q);
     const fits = (e) => (!muscle || e.muscle === muscle) && words.every((w) => e.name.toLowerCase().includes(w) || e.muscle.toLowerCase().includes(w));
     const rows = allExercises().filter(fits);
     // The big database only shows once you search or pick a muscle, so the list stays short.
@@ -1307,7 +1315,7 @@ $('#view').addEventListener('click', (e) => {
 // ---------- exercises ----------
 let exQuery = '', exMuscle = '';
 function exList() {
-  const words = exQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  const words = searchWords(exQuery);
   const counts = {};
   for (const wk of db.workouts) for (const ex of wk.exercises) counts[ex.exId] = (counts[ex.exId] || 0) + 1;
   const fits = (e) => (!exMuscle || e.muscle === exMuscle) && words.every((w) => e.name.toLowerCase().includes(w) || e.muscle.toLowerCase().includes(w));
@@ -1353,7 +1361,7 @@ VIEWS.exercise = (v) => {
     : e.kind === 'r' ? [['Most reps', b.reps || '—'], ['Sessions', sessions.length]]
       : [['Longest', b.time ? fmtClock(b.time) : '—'], ['Sessions', sessions.length]];
   const chartTitle = e.kind === 'wr' ? `Best est. 1RM per session (${u})` : e.kind === 'r' ? 'Most reps per session' : 'Longest set per session';
-  const info = e.ref ? exdb.get(e.ref) : null;
+  const info = infoFor(e);
   const tabSel = v.tab || (sessions.length ? 'summary' : info ? 'how' : 'summary');
   v.tab = tabSel;
   const tabs = [['summary', 'Summary'], ['history', 'History'], ...(info || e.ref ? [['how', 'How to']] : [])];

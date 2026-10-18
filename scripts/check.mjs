@@ -155,6 +155,16 @@ await page.screenshot({ path: out + '2b-active-full.png', fullPage: true });
 // Picker: own list first, the database once you search
 await page.click('[data-addex]');
 await page.waitForSelector('.pick-row');
+await page.fill('[data-q]', 'side laying leg raises');
+await page.waitForTimeout(200);
+ok((await page.locator('.pick-row').first().textContent()).includes('Side Lying Leg Raise'), '"side laying leg raises" finds Side Lying Leg Raise');
+await page.locator('.pick-peek').first().click();
+await page.waitForSelector('.peek-body .steps li');
+ok(await page.locator('.peek-body .steps li').count() === 4 && await page.locator('.peek-body .flip').count() === 0, 'it has its own steps and no wrong photo');
+await page.waitForTimeout(300);
+await page.screenshot({ path: out + '3a-side-lying.png' });
+await page.click('.peek-go [data-no]');
+await page.waitForTimeout(300);
 await page.click('[data-m="Chest"]');
 await page.fill('[data-q]', 'pulldown');
 await page.waitForTimeout(200);
