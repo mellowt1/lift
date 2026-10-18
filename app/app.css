@@ -345,8 +345,16 @@ body:has(.resume:not([hidden])) { padding-bottom: calc(var(--tabs-h) + var(--saf
 .sheet .chip.on { background: var(--ink); }
 .sheet .chips { flex: none; }
 .pick-list { flex: 1; overflow-y: auto; margin: 0 -16px; padding: 0 8px; overscroll-behavior: contain; }
-.pick-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 8px; border-radius: 10px; min-height: 56px; }
-.pick-row:active { background: var(--card2); }
+.pick-row { display: flex; align-items: center; border-radius: 10px; min-height: 56px; }
+.pick-row:has(.pick-main:active) { background: var(--card2); }
+.pick-peek { position: relative; flex: none; padding: 8px 6px 8px 8px; border-radius: 10px; }
+.pick-peek:active .thumb { opacity: .7; }
+.peek-dot { position: absolute; right: 0; bottom: 4px; width: 17px; height: 17px; border-radius: 50%; background: var(--card2); border: 1.5px solid var(--card); color: var(--ink2); font: 700 11px/14px var(--cond); text-align: center; }
+.pick-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 8px 10px 6px; min-height: 56px; }
+.peek-body { flex: 1; overflow-y: auto; margin: 0 -16px; padding: 0 16px 12px; overscroll-behavior: contain; }
+.peek-title { margin-bottom: 4px; }
+.peek-body .flip { margin: 4px 0 16px; border-radius: 12px; }
+.peek-go { flex: none; margin-top: 0; padding-top: 10px; border-top: 1px solid var(--line); }
 .pick-row.on { background: var(--accent-soft); }
 .pick-txt { flex: 1; display: grid; min-width: 0; }
 .pick-txt b { font-weight: 500; }

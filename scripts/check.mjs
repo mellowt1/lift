@@ -122,7 +122,15 @@ await page.waitForTimeout(200);
 ok(await page.locator('.pick-sec').count() === 1, 'search shows More exercises from the database');
 await page.screenshot({ path: out + '3-picker.png' });
 await page.fill('[data-q]', 'lateral');
-await page.locator('.pick-row').first().click();
+// Look before adding: the photo opens photos + steps, Add from there selects it
+await page.locator('.pick-peek').first().click();
+await page.waitForSelector('.peek-body .steps li');
+await page.waitForTimeout(400);
+ok(await page.locator('.peek-body .flip img').count() >= 1, 'preview shows the exercise photos');
+await page.screenshot({ path: out + '3b-peek.png' });
+await page.click('.peek-go [data-yes]');
+await page.waitForTimeout(300);
+ok(await page.locator('.pick-row.on').count() === 1, 'Add in the preview selects the exercise');
 await page.click('[data-go]');
 await page.waitForTimeout(300);
 ok(await page.locator('.ex').count() === 5, 'picker adds an exercise');

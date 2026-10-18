@@ -217,10 +217,52 @@ function confirmBox(title, text, ok = 'OK', danger = false) {
 // ---------- exercise picker ----------
 function pickRow(e, picked, multi) {
   const n = picked.indexOf(e.id);
-  return `<button class="pick-row${n >= 0 ? ' on' : ''}" data-id="${e.id}">
-    ${thumb(e)}
-    <span class="pick-txt"><b>${esc(e.name)}</b><small>${esc(e.muscle)} · ${esc(e.equip)}</small></span>
-    ${multi ? `<span class="pick-mark">${n >= 0 ? n + 1 : ''}</span>` : icon('chev', 'dim')}</button>`;
+  return `<div class="pick-row${n >= 0 ? ' on' : ''}">
+    <button class="pick-peek" data-peek="${e.id}" aria-label="Look at ${esc(e.name)}">${thumb(e)}<span class="peek-dot">i</span></button>
+    <button class="pick-main" data-id="${e.id}">
+      <span class="pick-txt"><b>${esc(e.name)}</b><small>${esc(e.muscle)} · ${esc(e.equip)}</small></span>
+      ${multi ? `<span class="pick-mark">${n >= 0 ? n + 1 : ''}</span>` : icon('chev', 'dim')}</button></div>`;
+}
+
+// A look at one exercise from the picker, before it goes in: photos, muscles, steps, your last time.
+function peekExercise(id, { multi, picked, onPick }) {
+  const e = getEx(id);
+  const info = e.ref ? exdb.get(e.ref) : null;
+  const done = doneWorkouts();
+  const times = done.filter((wk) => wk.exercises.some((x) => x.exId === id)).length;
+  const last = times ? previousSets(done, id).filter((x) => x.type !== 'w').slice(0, 3) : [];
+  const on = picked.includes(id);
+  const s = openSheet(`
+    <div class="peek-body">
+      <p class="sheet-title peek-title">${esc(e.name)}</p>
+      <p class="sheet-text">${esc(e.muscle)} · ${esc(e.equip)} · ${times ? `done ${times}×${last.length ? `, last ${last.map((x) => setText(x, e.kind)).join(', ')}` : ''}` : 'not done yet'}</p>
+      ${photosHtml(e, info)}
+      ${howToHtml(e, info)}
+    </div>
+    <div class="row2 peek-go"><button class="btn soft" data-no>Back</button>
+      <button class="btn primary" data-yes>${!multi ? 'Use this' : on ? 'Remove' : 'Add'}</button></div>`, { tall: true });
+  s.el.addEventListener('click', (ev) => {
+    const flip = ev.target.closest('[data-flip]');
+    if (flip) { flip.classList.toggle('paused'); return; }
+    if (ev.target.closest('[data-no]')) s.close();
+    if (ev.target.closest('[data-yes]')) { s.close(); onPick(id); }
+  });
+}
+
+// Start/finish photos and the how-to for an exercise; shared by the exercise page and the picker.
+function photosHtml(e, info) {
+  return e.ref ? `<button class="flip${info?.photos === 1 ? ' one' : ''}" data-flip aria-label="Start and finish position, tap to pause">
+      <img src="${photoUrl(e.ref, 0)}" alt="Start position">
+      ${info?.photos === 1 ? '' : `<img class="b" src="${photoUrl(e.ref, 1)}" alt="Finish position">`}
+      <span class="flip-tag">Start ⇄ finish</span>
+    </button>` : '';
+}
+function howToHtml(e, info) {
+  const yt = `https://www.youtube.com/results?search_query=${encodeURIComponent(e.name.replace(/\(.*?\)/g, '') + ' ' + (e.equip !== 'Other' && e.equip !== 'Bodyweight' ? e.equip : '') + ' proper form')}`;
+  return `${info ? `<div class="muscles">${info.prim.map((m) => `<span class="chip main">${esc(m)}</span>`).join('')}${info.sec.map((m) => `<span class="chip">${esc(m)}</span>`).join('')}</div>
+      <ol class="steps">${info.steps.map((st) => `<li>${esc(st)}</li>`).join('')}</ol>` : e.ref ? '<p class="empty">Steps are still loading.</p>' : '<p class="empty">No photos or steps for this one.</p>'}
+      <a class="btn soft block" href="${yt}" target="_blank" rel="noopener">${icon('video')}Watch on YouTube</a>
+      ${e.ref ? '<p class="credit">Photos and steps: free-exercise-db (public domain).</p>' : ''}`;
 }
 
 function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
@@ -258,14 +300,16 @@ function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
       draw();
       return;
     }
-    const row = e.target.closest('[data-id]');
-    if (row) {
-      if (!multi) { s.close(); onDone([row.dataset.id]); return; }
-      const i = picked.indexOf(row.dataset.id);
-      i >= 0 ? picked.splice(i, 1) : picked.push(row.dataset.id);
+    const choose = (id) => {
+      if (!multi) { s.close(); onDone([id]); return; }
+      const i = picked.indexOf(id);
+      i >= 0 ? picked.splice(i, 1) : picked.push(id);
       draw();
-      return;
-    }
+    };
+    const peek = e.target.closest('[data-peek]');
+    if (peek) { peekExercise(peek.dataset.peek, { multi, picked, onPick: choose }); return; }
+    const row = e.target.closest('[data-id]');
+    if (row) { choose(row.dataset.id); return; }
     if (e.target.closest('[data-go]')) { s.close(); onDone(picked); return; }
     if (e.target.closest('[data-new]')) {
       editCustom(null, (ex) => {
@@ -1137,18 +1181,10 @@ VIEWS.exercise = (v) => {
   const tabSel = v.tab || (sessions.length ? 'summary' : info ? 'how' : 'summary');
   v.tab = tabSel;
   const tabs = [['summary', 'Summary'], ['history', 'History'], ...(info || e.ref ? [['how', 'How to']] : [])];
-  const photos = e.ref ? `<button class="flip${info?.photos === 1 ? ' one' : ''}" data-flip aria-label="Start and finish position, tap to pause">
-      <img src="${photoUrl(e.ref, 0)}" alt="Start position">
-      ${info?.photos === 1 ? '' : `<img class="b" src="${photoUrl(e.ref, 1)}" alt="Finish position">`}
-      <span class="flip-tag">Start ⇄ finish</span>
-    </button>` : '';
-  const yt = `https://www.youtube.com/results?search_query=${encodeURIComponent(e.name.replace(/\(.*?\)/g, '') + ' ' + (e.equip !== 'Other' && e.equip !== 'Bodyweight' ? e.equip : '') + ' proper form')}`;
+  const photos = photosHtml(e, info);
   let body = '';
   if (tabSel === 'how') {
-    body = `${info ? `<div class="muscles">${info.prim.map((m) => `<span class="chip main">${esc(m)}</span>`).join('')}${info.sec.map((m) => `<span class="chip">${esc(m)}</span>`).join('')}</div>
-      <ol class="steps">${info.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '<p class="empty">Steps are still loading.</p>'}
-      <a class="btn soft block" href="${yt}" target="_blank" rel="noopener">${icon('video')}Watch on YouTube</a>
-      <p class="credit">Photos and steps: free-exercise-db (public domain).</p>`;
+    body = howToHtml(e, info);
   } else if (tabSel === 'history') {
     body = sessions.length ? sessions.map((wk) => `<button class="card d-ex hist" data-wid="${wk.id}">
         <span class="hist-top"><b>${esc(wk.name)}</b><small>${dayFmt.format(wk.start)}</small></span>
