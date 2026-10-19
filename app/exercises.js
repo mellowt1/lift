@@ -5,6 +5,21 @@ export const MUSCLES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quad
 // The chips in the pickers: Arms and Legs hold the finer muscles, which show under them once picked.
 export const GROUPS = { Arms: ['Biceps', 'Triceps'], Legs: ['Quads', 'Hamstrings', 'Glutes', 'Calves'] };
 export const CHIPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Core', 'Cardio', 'Other'];
+// Good picks: the staples for each muscle, best first. Shown on top when a muscle chip is picked,
+// and under a muscle that gets little work in Find exercises. Ids from ROWS below.
+export const STAPLES = {
+  Chest: ['bench-bb', 'incline-bench-db', 'chest-dip', 'fly-cable'],
+  Back: ['pull-up', 'lat-pulldown', 'row-bb', 'cable-row'],
+  Shoulders: ['ohp-bb', 'shoulder-press-db', 'lateral-raise-db', 'reverse-fly-db'],
+  Biceps: ['curl-db', 'incline-curl', 'hammer-curl'],
+  Triceps: ['pushdown', 'oh-ext-cable', 'cgbp'],
+  Quads: ['squat-bb', 'leg-press', 'bulgarian', 'leg-ext'],
+  Hamstrings: ['rdl-bb', 'lying-curl', 'seated-curl'],
+  Glutes: ['hip-thrust', 'rdl-bb', 'hip-abduction'],
+  Calves: ['calf-standing', 'calf-seated'],
+  Core: ['hanging-leg-raise', 'cable-crunch', 'ab-wheel', 'plank'],
+  Cardio: ['rower', 'bike', 'treadmill'],
+};
 export const EQUIPMENT = ['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Bodyweight', 'Kettlebell', 'Other'];
 
 const ROWS = [

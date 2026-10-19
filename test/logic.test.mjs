@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtClock, fmtDuration, parseTime, parseNum, e1rm, bests, prsFor, previousSets, weekStart, weeklyCounts, streakWeeks, progression, fmtW } from '../app/logic.js';
-import { suggest, rangeFor, nextRoutine, nextGymDay, parseCSV, parseHevyDate, hevyWorkouts, matchExercise, routinesFromHistory, daysFromHistory, stepFor } from '../app/logic.js';
+import { muscleWeek, suggest, rangeFor, nextRoutine, nextGymDay, parseCSV, parseHevyDate, hevyWorkouts, matchExercise, routinesFromHistory, daysFromHistory, stepFor } from '../app/logic.js';
 
 const DAY = 86400000;
 const wk = (id, start, exId, sets) => ({ id, name: id, start, end: start + 3600000, exercises: [{ exId, note: '', sets }] });
@@ -92,6 +92,18 @@ test('rotation goes on from the last routine done', () => {
   assert.equal(nextRoutine(R, [{ start: 1, routineId: 'push', routineIds: ['push', 'pull'] }], null).id, 'legs', 'two routines in one workout skip past both');
   assert.equal(nextRoutine(R, [{ start: 1, routineId: 'push', routineIds: ['push', 'legs'] }], null).id, 'pull', 'a routine skipped over is still next');
   assert.equal(nextRoutine(R, [{ start: 1, routineId: 'pull', routineIds: ['pull', 'legs', 'push'] }], null).id, 'legs', 'all three done: round again');
+});
+
+test('sets per muscle per week', () => {
+  const now = new Date(2026, 9, 19, 12).getTime();
+  const muscle = (id) => ({ bench: 'Chest', row: 'Back' })[id];
+  const w = (daysAgo, exId, sets) => ({ start: now - daysAgo * DAY, exercises: [{ exId, sets }] });
+  const ws = [w(40, 'bench', [S(60, 8)]), w(20, 'bench', [S(40, 10, 'w'), S(60, 8), S(60, 8)]), w(6, 'bench', [S(60, 8), S(60, 8)]), w(6, 'row', [S(50, 10)])];
+  const out = muscleWeek(ws, muscle, now);
+  assert.equal(out.workouts, 3, 'only the last four weeks');
+  assert.deepEqual(out.sets, { Chest: 1, Back: 0.3 }, 'warm-ups left out, per week over four weeks');
+  assert.equal(muscleWeek([w(14, 'row', [S(50, 10), S(50, 10), S(50, 10), S(50, 10)])], muscle, now).sets.Back, 2, 'two weeks of history count as two weeks');
+  assert.deepEqual(muscleWeek([], muscle, now), { weeks: 0, sets: {}, workouts: 0 });
 });
 
 test('next gym day', () => {

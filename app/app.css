@@ -515,3 +515,26 @@ a.btn { text-decoration: none; color: inherit; }
   .flip img.b { animation: none !important; opacity: 0; }
   .flip.paused img.b { opacity: 1; }
 }
+
+/* Find exercises */
+.ask { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.ask .search { flex: 1; }
+.ask .btn { min-height: 44px; }
+.ask-answer { color: var(--ink2); font-size: 15px; line-height: 1.45; margin: 12px 2px; }
+.hint.warn { color: var(--danger); }
+.f-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 12px; position: relative; }
+.f-row + .f-row::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; border-top: 1px solid var(--line); }
+.f-main { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; text-align: left; min-height: 48px; }
+.f-main > span:last-child { display: grid; min-width: 0; }
+.f-main b { font-weight: 500; }
+.f-main small { color: var(--ink2); font-size: 13px; }
+.f-in { color: var(--ink3); font-size: 13px; flex: none; }
+.f-row .btn.sm { flex: none; }
+.mbars { display: grid; gap: 8px; padding: 14px 16px; }
+.mbar { display: grid; grid-template-columns: 92px 1fr 34px; align-items: center; gap: 10px; font-size: 14px; }
+.mbar i { height: 8px; border-radius: 4px; background: var(--card2); overflow: hidden; }
+.mbar i b { display: block; height: 100%; background: var(--accent-bg); border-radius: 4px; }
+.mbar em { font-style: normal; text-align: right; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.mbar.low span, .mbar.low em { color: var(--ink3); }
+.mbar.low i b { background: var(--ink3); }
+.to-routine { margin-top: 10px; }

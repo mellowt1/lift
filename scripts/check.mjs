@@ -102,6 +102,12 @@ await page.addInitScript((s) => { if (!localStorage.getItem('lift.v1')) localSto
 const sent = [];
 await page.route('https://paul-hub.paul-o-a04.workers.dev/api/lift/**', async (route) => {
   sent.push({ url: route.request().url(), body: JSON.parse(route.request().postData() || '{}') });
+  if (route.request().url().endsWith('/ask')) {
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({
+      answer: 'Your hamstrings get no direct work. Add one hinge and one curl.',
+      picks: [{ name: 'Romanian Deadlift (Barbell)', why: 'The main hinge. 3 x 6-10' }, { name: 'Nordic Hamstring Curl', why: 'Bodyweight, hard on the way down. 3 x 5' }],
+    }) });
+  }
   await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ ok: true, xp: 1, feed: 1 }) });
 });
 await page.goto(URL_ + '?c=abcdefgh23456789');
@@ -176,6 +182,7 @@ await page.waitForTimeout(200);
 const legM = (await page.locator('.pick-row small').allTextContents()).map((t) => t.split(' ·')[0]);
 ok(legM.length > 10 && legM.every((m) => ['Quads', 'Hamstrings', 'Glutes', 'Calves'].includes(m)) && new Set(legM).size >= 3, `Legs lists every leg muscle (${[...new Set(legM)].join(', ')})`);
 ok(await page.locator('.chips.sub [data-m]').count() === 5, 'Legs shows All legs + its 4 muscles below');
+ok((await page.locator('.pick-sec').first().textContent()) === 'Good picks' && (await page.locator('.pick-row b').first().textContent()) === 'Squat (Barbell)', 'Legs starts with Good picks, Squat first');
 await page.screenshot({ path: out + '3d-legs.png' });
 await page.click('[data-m="Hamstrings"]');
 await page.waitForTimeout(200);
@@ -376,6 +383,32 @@ await page.click('[data-done]');
 await page.waitForSelector('.next-name');
 ok((await page.textContent('.next-name')) === 'Push' && await page.locator('.link-chip.last').count() === 2, 'Today: Push next, Pull and Upper both ticked');
 await page.screenshot({ path: out + '14-today-after-double.png' });
+
+// Find exercises: little-worked muscles with good picks, Add puts one in a routine, Ask Claude
+await page.click('[data-tab="routines"]');
+await page.click('.pad > [data-find]');
+await page.waitForSelector('.mbars');
+const lowM = await page.locator('.mbar.low span').allTextContents();
+ok(lowM.includes('Quads') && lowM.includes('Hamstrings') && !lowM.includes('Chest'), `legs show as little work, chest does not (${lowM.join(', ')})`);
+ok(await page.locator('.pick-sec', { hasText: 'Quads' }).count() === 1, 'Worth adding lists Quads');
+await page.locator('[data-add="squat-bb"]').click();
+await page.locator('.sheet .menu button', { hasText: 'Pull' }).click();
+await page.waitForTimeout(300);
+ok(await page.locator('[data-add="squat-bb"]').count() === 0 && await page.evaluate(() => JSON.parse(localStorage.getItem('lift.v1')).routines.find((r) => r.name === 'Pull').items.some((it) => it.exId === 'squat-bb' && it.lo === 8)), 'Add puts Squat in Pull with an 8–12 range');
+await page.fill('[data-askq]', 'what is good for hamstrings?');
+await page.click('[data-askgo]');
+await page.waitForSelector('.ask-answer');
+const asked = sent.find((x) => x.url.endsWith('/ask'));
+ok(asked && asked.body.question === 'what is good for hamstrings?' && asked.body.library.includes('Squat (Barbell)') && asked.body.routines.length === 3, 'Ask sends the question, the library and the routines');
+ok(await page.locator('[data-askout] [data-add="rdl-bb"]').count() === 1 && await page.locator('[data-askout] [data-search="Nordic Hamstring Curl"]').count() === 1, 'answer: RDL matched with Add, Nordic curl offered as a search');
+await page.waitForTimeout(800);
+await page.screenshot({ path: out + '15-find.png' });
+await page.screenshot({ path: out + '15b-find-full.png', fullPage: true });
+await page.locator('[data-askout] [data-open="rdl-bb"]').click();
+await page.waitForSelector('[data-toroutine]');
+ok(true, 'an answer opens the exercise page, with Add to a routine');
+await page.goBack();
+await page.goBack();
 
 await page.click('[data-tab="profile"]');
 await page.waitForSelector('[data-bars] svg');

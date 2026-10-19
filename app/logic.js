@@ -213,6 +213,23 @@ export function rangeFor(reps) {
   return fits[0];
 }
 
+// Work sets per muscle per week over the last `days` days (warm-ups left out). Counted over the
+// time since the first workout when that is shorter, so a new user is not marked low everywhere.
+export function muscleWeek(workouts, muscleOf, now = Date.now(), days = 28) {
+  const from = now - days * 86400000;
+  const recent = workouts.filter((w) => w.start >= from && w.start <= now);
+  if (!recent.length) return { weeks: 0, sets: {}, workouts: 0 };
+  const first = Math.min(...workouts.map((w) => w.start));
+  const weeks = Math.max(1, (now - Math.max(from, first)) / (7 * 86400000));
+  const sets = {};
+  for (const w of recent) for (const ex of w.exercises) {
+    const m = muscleOf(ex.exId);
+    sets[m] = (sets[m] || 0) + ex.sets.filter(isWork).length;
+  }
+  for (const m in sets) sets[m] = Math.round((sets[m] / weeks) * 10) / 10;
+  return { weeks, sets, workouts: recent.length };
+}
+
 // Routine to do next: one picked by hand wins, else the one after the last
 // routine finished, else the first. Missed days never move the rotation.
 // A workout that did two routines (Back + Legs) skips past both.

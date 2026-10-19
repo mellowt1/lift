@@ -1,8 +1,8 @@
-import { BUILT_IN, MUSCLES, GROUPS, CHIPS, EQUIPMENT, HEVY_ALIAS, HOWTO, TAGS, photoUrl } from './exercises.js';
+import { BUILT_IN, MUSCLES, GROUPS, CHIPS, STAPLES, EQUIPMENT, HEVY_ALIAS, HOWTO, TAGS, photoUrl } from './exercises.js';
 import {
   uid, toUnit, fromUnit, fmtNum, fmtW, fmtBig, fmtClock, fmtDuration, parseTime, parseNum, e1rm, isWork,
   workoutVolume, workoutSetCount, bests, prsFor, PR_LABEL, previousSets, weeklyCounts, streakWeeks, progression, weekStart,
-  RANGES, DEFAULT_RANGE, stepFor, suggest, nextRoutine, nextGymDay, dayIndex, startOfDay,
+  RANGES, DEFAULT_RANGE, stepFor, suggest, muscleWeek, nextRoutine, nextGymDay, dayIndex, startOfDay,
   hevyWorkouts, kindFromSets, matchExercise, routinesFromHistory, daysFromHistory,
 } from './logic.js';
 
@@ -67,6 +67,8 @@ function muscleChips(sel, attr) {
   const sub = GROUPS[top] ? `<div class="chips sub">${chip(top, 'All ' + top.toLowerCase(), sel === top)}${GROUPS[top].map((m) => chip(m, m, m === sel)).join('')}</div>` : '';
   return `<div class="chips">${row}</div>${sub}`;
 }
+// Good picks for a chip: its staples, or for Arms and Legs the top two of each muscle in it.
+const goodPicks = (m) => [...new Set(GROUPS[m] ? GROUPS[m].flatMap((x) => (STAPLES[x] || []).slice(0, 2)) : STAPLES[m] || [])].map(getEx);
 const LIB_REFS = new Set(BUILT_IN.map((b) => b.ref).filter(Boolean));
 function buildExMap() {
   const more = [...exdb.values()].map((d) => ({ id: 'db:' + d.id, name: d.name, muscle: d.muscle, equip: d.equip, kind: d.kind, ref: d.id, db: true }));
@@ -349,10 +351,13 @@ function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
   const draw = () => {
     const words = searchWords(q);
     const fits = (e) => inMuscle(e, muscle) && words.every((w) => hay(e).includes(w));
-    const rows = allExercises().filter(fits);
+    // A muscle picked and nothing typed: its good picks first.
+    const good = muscle && !words.length ? goodPicks(muscle) : [];
+    const rows = allExercises().filter(fits).filter((e) => !good.includes(e));
     // The big database only shows once you search or pick a muscle, so the list stays short.
     const more = words.length || muscle ? moreExercises().filter(fits).slice(0, 120) : [];
-    list.innerHTML = rows.map((e) => pickRow(e, picked, multi)).join('')
+    list.innerHTML = (good.length ? `<p class="pick-sec">Good picks</p>${good.map((e) => pickRow(e, picked, multi)).join('')}<p class="pick-sec">All ${esc(muscle.toLowerCase())}</p>` : '')
+      + rows.map((e) => pickRow(e, picked, multi)).join('')
       + (more.length ? `<p class="pick-sec">More exercises · photos and steps</p>${more.map((e) => pickRow(e, picked, multi)).join('')}` : '')
       + (!rows.length && !more.length ? `<p class="empty">No exercise called “${esc(q)}”. Tap New to make it.</p>` : '')
       + (!words.length && !muscle && exdb.size ? `<p class="pick-hint">Search to see ${exdb.size} more exercises with photos and steps.</p>` : '');
@@ -1111,7 +1116,8 @@ VIEWS.routines = () => {
         <div class="r-thumbs">${x.items.slice(0, 6).map((it) => thumb(getEx(it.exId))).join('')}</div>
         <p class="routine-ex">${esc(x.items.map((it) => getEx(it.exId).name).join(', ')) || 'No exercises yet'}</p>
         <button class="btn soft block" data-rstart>Start ${esc(x.name)}</button>
-      </div>`).join('')}` : emptyToday()}
+      </div>`).join('')}
+    <button class="btn ghost block" data-find>${icon('search')}Find exercises to add</button>` : emptyToday()}
   </div>`;
 };
 
@@ -1121,6 +1127,7 @@ $('#view').addEventListener('click', (e) => {
   if (t.closest('[data-newroutine]')) { go({ view: 'routine', draft: { id: null, name: '', items: [] } }); return; }
   if (t.closest('[data-empty]')) { startWorkout(); return; }
   if (t.closest('[data-hevy]')) { $('[data-hevyfile]').click(); return; }
+  if (t.closest('[data-find]')) { go({ view: 'find' }); return; }
   const card = t.closest('[data-rid]');
   if (!card) return;
   const list = db.routines;
@@ -1365,14 +1372,16 @@ function exList() {
   const counts = {};
   for (const wk of db.workouts) for (const ex of wk.exercises) counts[ex.exId] = (counts[ex.exId] || 0) + 1;
   const fits = (e) => inMuscle(e, exMuscle) && words.every((w) => hay(e).includes(w));
-  const rows = allExercises().filter(fits);
+  const good = exMuscle && !words.length ? goodPicks(exMuscle) : [];
+  const rows = allExercises().filter(fits).filter((e) => !good.includes(e));
   const more = words.length || exMuscle ? moreExercises().filter(fits).slice(0, 120) : [];
   if (!rows.length && !more.length) return `<p class="empty">No match. Tap New to add “${esc(exQuery)}”.</p>`;
   const line = (e) => `<button class="row" data-open="${e.id}">
     ${thumb(e)}
     <span><b>${esc(e.name)}</b><small>${esc(e.muscle)} · ${esc(e.equip)}${e.custom ? ' · yours' : ''}</small></span>
     ${counts[e.id] ? `<em>${counts[e.id]}×</em>` : ''}${icon('chev', 'dim')}</button>`;
-  return rows.map(line).join('') + (more.length ? `<p class="pick-sec">More exercises · photos and steps</p>${more.map(line).join('')}` : '');
+  return (good.length ? `<p class="pick-sec">Good picks</p>${good.map(line).join('')}<p class="pick-sec">All ${esc(exMuscle.toLowerCase())}</p>` : '')
+    + rows.map(line).join('') + (more.length ? `<p class="pick-sec">More exercises · photos and steps</p>${more.map(line).join('')}` : '');
 }
 VIEWS.exercises = () => `<header class="bar"><button class="icon-btn" data-back aria-label="Back">${icon('back')}</button><span class="bar-mid"><b>Exercises</b></span><button class="link" data-newex>${icon('plus')}New</button></header>
   <div class="pad">
@@ -1435,6 +1444,7 @@ VIEWS.exercise = (v) => {
     <div class="pad">
       <h1 class="title">${esc(e.name)}</h1>
       <p class="sub">${esc(e.muscle)} · ${esc(e.equip)}</p>
+      ${db.routines.length ? `<button class="btn soft sm to-routine" data-toroutine>${icon('plus')}Add to a routine</button>` : ''}
     </div>
     ${photos}
     <div class="pad">
@@ -1458,6 +1468,7 @@ $('#view').addEventListener('click', (e) => {
   if (flip) { flip.classList.toggle('paused'); return; }
   const w = e.target.closest('[data-wid]');
   if (w) { go({ view: 'workoutDetail', id: w.dataset.wid }); return; }
+  if (e.target.closest('[data-toroutine]')) { addToRoutine(v.id); return; }
   if (e.target.closest('[data-cmenu]')) {
     const ex = db.custom.find((c) => c.id === v.id);
     const used = db.workouts.some((wk) => wk.exercises.some((x) => x.exId === ex.id)) || db.routines.some((r) => r.items.some((it) => it.exId === ex.id));
@@ -1465,6 +1476,121 @@ $('#view').addEventListener('click', (e) => {
     if (!used) items.push({ label: 'Delete exercise', danger: true, fn: () => { db.custom = db.custom.filter((c) => c !== ex); save(); buildExMap(); back(); } });
     actionSheet(ex.name, items);
   }
+});
+
+// ---------- find exercises ----------
+// What to add: the muscles that got little work in the last four weeks with good picks for each,
+// and a question to Claude through paul-hub (POST /api/lift/:code/ask) that answers with
+// exercises from Paul's own list where one fits.
+const LOW = 4; // work sets a week under which a muscle counts as getting little work
+const FIND_MUSCLES = MUSCLES.filter((m) => m !== 'Cardio' && m !== 'Other');
+let ask = { q: '', busy: false, answer: '', picks: [], error: '' };
+
+function addToRoutine(exId) {
+  const e = getEx(exId);
+  if (!db.routines.length) { toast('Build a routine first'); return; }
+  actionSheet(`Add ${e.name} to`, db.routines.map((r) => {
+    const has = r.items.some((it) => it.exId === exId);
+    return {
+      label: r.name + (has ? '  ✓' : ''),
+      fn: () => {
+        if (has) { toast(`Already in ${r.name}`); return; }
+        r.items.push({ exId, sets: 3, ...(e.kind === 'wr' ? { lo: DEFAULT_RANGE[0], hi: DEFAULT_RANGE[1] } : {}) });
+        save();
+        toast(`Added to ${r.name}`);
+        rerender();
+      },
+    };
+  }));
+}
+
+function findRow(e, why = '') {
+  const inR = db.routines.find((r) => r.items.some((it) => it.exId === e.id));
+  return `<div class="f-row">
+    <button class="f-main" data-open="${e.id}">${thumb(e)}<span><b>${esc(e.name)}</b><small>${esc(why || `${e.muscle} · ${e.equip}`)}</small></span></button>
+    ${inR ? `<span class="f-in">In ${esc(inR.name)}</span>` : `<button class="btn soft sm" data-add="${e.id}">Add</button>`}
+  </div>`;
+}
+
+function askHtml() {
+  if (!db.settings.hub) return '<p class="hint">Connect paul-hub in Profile to ask Claude.</p>';
+  const picks = ask.picks.map((p) => {
+    const e = matchExercise(p.name, allExercises()) || matchExercise(p.name, moreExercises());
+    return e ? findRow(e, p.why) : `<div class="f-row"><button class="f-main" data-search="${esc(p.name)}"><span class="thumb glyph">${icon('search')}</span><span><b>${esc(p.name)}</b><small>${esc(p.why)}</small></span></button></div>`;
+  }).join('');
+  return (ask.busy ? '<p class="hint">Claude is thinking…</p>' : '')
+    + (ask.error ? `<p class="hint warn">${esc(ask.error)}</p>` : '')
+    + (ask.answer ? `<p class="ask-answer">${esc(ask.answer)}</p>` : '')
+    + (picks ? `<div class="card list">${picks}</div>` : '');
+}
+
+VIEWS.find = () => {
+  const mw = muscleWeek(db.workouts, (id) => getEx(id).muscle);
+  const max = Math.max(10, ...FIND_MUSCLES.map((m) => mw.sets[m] || 0));
+  const low = mw.workouts ? FIND_MUSCLES.filter((m) => (mw.sets[m] || 0) < LOW) : [];
+  // The four that get the least work, two picks each, so the list stays short.
+  const worst = [...low].sort((x, y) => (mw.sets[x] || 0) - (mw.sets[y] || 0)).slice(0, 4);
+  const inRoutine = new Set(db.routines.flatMap((r) => r.items.map((it) => it.exId)));
+  const fill = worst.map((m) => {
+    const picks = (STAPLES[m] || []).map(getEx).filter((e) => !inRoutine.has(e.id)).slice(0, 2);
+    return picks.length ? `<p class="pick-sec">${m} · ${fmtNum(mw.sets[m] || 0)} sets a week</p><div class="card list">${picks.map((e) => findRow(e)).join('')}</div>` : '';
+  }).join('');
+  return `<header class="bar"><button class="icon-btn" data-back aria-label="Back">${icon('back')}</button><span class="bar-mid"><b>Find exercises</b></span><span class="icon-btn"></span></header>
+  <div class="pad">
+    <form class="ask" data-askform>
+      <label class="search">${icon('search')}<input data-askq placeholder="Ask Claude: what's good for hamstrings?" value="${esc(ask.q)}" maxlength="500" autocomplete="off" enterkeyhint="send"></label>
+      <button class="btn primary sm" data-askgo${ask.busy || !db.settings.hub ? ' disabled' : ''}>Ask</button>
+    </form>
+    <div data-askout>${askHtml()}</div>
+
+    <div class="sec-head"><h2>Last 4 weeks</h2><small>work sets a week</small></div>
+    ${mw.workouts ? `<div class="card mbars">${FIND_MUSCLES.map((m) => {
+      const n = mw.sets[m] || 0;
+      return `<div class="mbar${n < LOW ? ' low' : ''}"><span>${m}</span><i><b style="width:${Math.round((n / max) * 100)}%"></b></i><em>${fmtNum(n)}</em></div>`;
+    }).join('')}</div>
+    <p class="hint">About 10 hard sets a week per muscle is a common target. Under ${LOW} counts as little work.</p>`
+    : '<div class="empty-card"><p><b>Nothing logged in 4 weeks</b></p><p>Log a few workouts and Lift shows which muscles get little work.</p></div>'}
+
+    ${fill ? `<div class="sec-head"><h2>Worth adding</h2></div>${fill}` : mw.workouts ? '<p class="hint">Every muscle gets some work. Nice.</p>' : ''}
+  </div>`;
+};
+
+async function askClaude() {
+  const q = ask.q.trim();
+  if (!q || ask.busy || !db.settings.hub) return;
+  ask = { q, busy: true, answer: '', picks: [], error: '' };
+  const out = () => { const el = $('[data-askout]'); if (cur().view === 'find' && el) { el.innerHTML = askHtml(); const go = $('[data-askgo]'); if (go) go.disabled = ask.busy; } };
+  out();
+  const since = Date.now() - 28 * 86400000;
+  const recent = new Map();
+  for (const w of db.workouts) if (w.start >= since) for (const ex of w.exercises) recent.set(ex.exId, (recent.get(ex.exId) || 0) + ex.sets.filter(isWork).length);
+  const body = {
+    question: q,
+    library: allExercises().map((e) => e.name),
+    recent: [...recent].map(([id, sets]) => ({ name: getEx(id).name, muscle: getEx(id).muscle, sets })),
+    routines: db.routines.map((r) => ({ name: r.name, items: r.items.map((it) => getEx(it.exId).name) })),
+  };
+  try {
+    const res = await fetch(`${HUB}/api/lift/${db.settings.hub}/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const got = await res.json().catch(() => ({}));
+    ask = res.ok ? { q, busy: false, answer: got.answer || '', picks: got.picks || [], error: '' }
+      : { q, busy: false, answer: '', picks: [], error: res.status === 503 ? 'Claude is not set up on paul-hub yet.' : 'Claude could not answer. Try again.' };
+  } catch {
+    ask = { q, busy: false, answer: '', picks: [], error: 'No connection. Ask again when you are online.' };
+  }
+  out();
+}
+
+$('#view').addEventListener('input', (e) => { if (cur().view === 'find' && e.target.matches('[data-askq]')) ask.q = e.target.value; });
+$('#view').addEventListener('submit', (e) => { if (cur().view === 'find' && e.target.matches('[data-askform]')) { e.preventDefault(); $('[data-askq]').blur(); askClaude(); } });
+$('#view').addEventListener('click', (e) => {
+  if (cur().view !== 'find') return;
+  const add = e.target.closest('[data-add]');
+  if (add) { addToRoutine(add.dataset.add); return; }
+  const open = e.target.closest('[data-open]');
+  if (open) { go({ view: 'exercise', id: open.dataset.open }); return; }
+  const s = e.target.closest('[data-search]');
+  if (s) { exQuery = s.dataset.search; exMuscle = ''; go({ view: 'exercises' }); }
 });
 
 // ---------- charts ----------
@@ -1571,6 +1697,7 @@ VIEWS.profile = () => {
     </div>
     <div class="card list">
       <button class="row" data-exlib>${icon('list')}<span><b>Exercises</b><small>${allExercises().length} in your list · ${exdb.size || 868} more with photos</small></span>${icon('chev', 'dim')}</button>
+      <button class="row" data-find>${icon('search')}<span><b>Find exercises</b><small>What gets little work · good picks · ask Claude</small></span>${icon('chev', 'dim')}</button>
     </div>
     ${hubCard()}
     <h2 class="month">Hevy</h2>
@@ -1604,6 +1731,7 @@ $('#view').addEventListener('click', async (e) => {
   if (t.closest('[data-export]')) { exportData(); return; }
   if (t.closest('[data-import]')) $('[data-file]').click();
   if (t.closest('[data-exlib]')) go({ view: 'exercises' });
+  if (t.closest('[data-find]')) go({ view: 'find' });
   if (t.closest('[data-hevy]')) $('[data-hevyfile]').click();
 });
 
