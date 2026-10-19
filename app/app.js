@@ -1,4 +1,4 @@
-import { BUILT_IN, MUSCLES, EQUIPMENT, HEVY_ALIAS, HOWTO, TAGS, photoUrl } from './exercises.js';
+import { BUILT_IN, MUSCLES, GROUPS, CHIPS, EQUIPMENT, HEVY_ALIAS, HOWTO, TAGS, photoUrl } from './exercises.js';
 import {
   uid, toUnit, fromUnit, fmtNum, fmtW, fmtBig, fmtClock, fmtDuration, parseTime, parseNum, e1rm, isWork,
   workoutVolume, workoutSetCount, bests, prsFor, PR_LABEL, previousSets, weeklyCounts, streakWeeks, progression, weekStart,
@@ -56,6 +56,17 @@ const searchWords = (q) => q.toLowerCase().split(/\s+/).filter(Boolean)
   .map((w) => (w === 'laying' ? 'lying' : w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
 // What a search looks through: name, muscle and any extra words in TAGS.
 const hay = (e) => `${e.name} ${e.muscle} ${TAGS[e.id] || ''}`.toLowerCase();
+// A chip is one muscle or a group of them (Legs = Quads, Hamstrings, Glutes, Calves).
+const inMuscle = (e, m) => !m || e.muscle === m || !!GROUPS[m]?.includes(e.muscle);
+const groupOf = (m) => (GROUPS[m] ? m : Object.keys(GROUPS).find((g) => GROUPS[g].includes(m)) || m);
+// The chip rows: the groups, and once Arms or Legs is picked, its muscles in a row below.
+function muscleChips(sel, attr) {
+  const top = groupOf(sel);
+  const chip = (m, label, on) => `<button data-${attr}="${m}" class="chip${on ? ' on' : ''}">${label}</button>`;
+  const row = ['', ...CHIPS].map((m) => chip(m, m || 'All', m === top)).join('');
+  const sub = GROUPS[top] ? `<div class="chips sub">${chip(top, 'All ' + top.toLowerCase(), sel === top)}${GROUPS[top].map((m) => chip(m, m, m === sel)).join('')}</div>` : '';
+  return `<div class="chips">${row}</div>${sub}`;
+}
 const LIB_REFS = new Set(BUILT_IN.map((b) => b.ref).filter(Boolean));
 function buildExMap() {
   const more = [...exdb.values()].map((d) => ({ id: 'db:' + d.id, name: d.name, muscle: d.muscle, equip: d.equip, kind: d.kind, ref: d.id, db: true }));
@@ -331,13 +342,13 @@ function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
       <button class="link" data-new>New</button>
     </div>
     <label class="search">${icon('search')}<input type="search" placeholder="Search ${exMap.size} exercises" data-q autocomplete="off"></label>
-    <div class="chips" data-chips>${['', ...MUSCLES].map((m) => `<button data-m="${m}" class="chip${m === '' ? ' on' : ''}">${m || 'All'}</button>`).join('')}</div>
+    <div class="chipbox" data-chips>${muscleChips('', 'm')}</div>
     <div class="pick-list" data-list></div>
     ${multi ? '<button class="btn primary block pick-go" data-go disabled>Add exercises</button>' : ''}`, { tall: true });
   const list = $('[data-list]', s.el);
   const draw = () => {
     const words = searchWords(q);
-    const fits = (e) => (!muscle || e.muscle === muscle) && words.every((w) => hay(e).includes(w));
+    const fits = (e) => inMuscle(e, muscle) && words.every((w) => hay(e).includes(w));
     const rows = allExercises().filter(fits);
     // The big database only shows once you search or pick a muscle, so the list stays short.
     const more = words.length || muscle ? moreExercises().filter(fits).slice(0, 120) : [];
@@ -352,14 +363,14 @@ function pickExercises({ multi = true, title = 'Add exercises', onDone }) {
   // Typing searches every exercise: a muscle chip picked earlier goes back to All.
   $('[data-q]', s.el).addEventListener('input', (e) => {
     q = e.target.value;
-    if (q.trim() && muscle) { muscle = ''; for (const c of s.el.querySelectorAll('[data-m]')) c.classList.toggle('on', c.dataset.m === ''); }
+    if (q.trim() && muscle) { muscle = ''; $('[data-chips]', s.el).innerHTML = muscleChips('', 'm'); }
     draw();
   });
   s.el.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-m]');
     if (chip) {
       muscle = chip.dataset.m;
-      for (const c of s.el.querySelectorAll('[data-m]')) c.classList.toggle('on', c === chip);
+      $('[data-chips]', s.el).innerHTML = muscleChips(muscle, 'm');
       draw();
       return;
     }
@@ -533,10 +544,10 @@ function activeEx(it, done) {
   };
 }
 
-function startWorkout({ name = 'Workout', items = [], routineId = null } = {}) {
+function startWorkout({ name = 'Workout', items = [], routineId = null, routineIds = routineId ? [routineId] : [] } = {}) {
   if (db.active) { toast('Finish or discard the current workout first'); go({ view: 'active' }); return; }
   const done = doneWorkouts();
-  db.active = { id: uid(), name, start: Date.now(), routineId, exercises: items.map((it) => activeEx(it, done)) };
+  db.active = { id: uid(), name, start: Date.now(), routineId, routineIds, exercises: items.map((it) => activeEx(it, done)) };
   save();
   unlockAudio();
   if (tab !== 'today') { stack = []; tab = 'today'; }
@@ -551,6 +562,28 @@ function addToActive(ids) {
   save();
   rerender();
   setTimeout(() => document.querySelector('.ex:last-of-type')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
+// Two routines in one session: the second one's exercises go on the end (ones already in are kept
+// as they are), the name joins up while it was never typed, and the rotation skips past both.
+function addRoutineToActive(r) {
+  const a = db.active;
+  const ids = a.routineIds || (a.routineIds = a.routineId ? [a.routineId] : []);
+  const names = ids.map((id) => db.routines.find((x) => x.id === id)?.name).filter(Boolean);
+  const auto = !a.name.trim() || a.name.trim() === (names.join(' + ') || 'Workout');
+  const done = doneWorkouts();
+  const have = new Set(a.exercises.map((ex) => ex.exId));
+  const from = a.exercises.length;
+  const add = r.items.filter((it) => !have.has(it.exId));
+  a.exercises.push(...add.map((it) => activeEx(it, done)));
+  ids.push(r.id);
+  a.routineId = a.routineId || r.id;
+  if (auto) a.name = [...names, r.name].join(' + ');
+  save();
+  rerender();
+  const kept = r.items.length - add.length;
+  toast(`Added ${r.name}${kept ? ` · ${kept} already in` : ''}`);
+  if (add.length) setTimeout(() => document.querySelectorAll('.ex')[from]?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }
 
 function activeStats() {
@@ -653,6 +686,7 @@ VIEWS.active = () => {
       </div>
       ${a.exercises.length ? a.exercises.map((ex, i) => exCard(ex, i, done)).join('') : `<div class="empty-card"><p><b>Get started</b></p><p>Add an exercise to begin logging sets.</p></div>`}
       <button class="btn primary block" data-addex>${icon('plus')}Add exercise</button>
+      ${db.routines.length ? `<button class="btn soft block" data-addroutine>${icon('plus')}Add a routine</button>` : ''}
       <button class="btn danger-ghost block" data-discard>Discard workout</button>
     </div>`;
 };
@@ -711,6 +745,15 @@ $('#view').addEventListener('click', (e) => {
   if (t.closest('[data-min]')) { back(); return; }
   if (t.closest('[data-finish]')) { finishWorkout(); return; }
   if (t.closest('[data-addex]')) { pickExercises({ onDone: addToActive }); return; }
+  if (t.closest('[data-addroutine]')) {
+    // In rotation order from the one due next, without the ones already in this workout.
+    const ids = a.routineIds || [a.routineId];
+    const list = db.routines, k = Math.max(0, list.indexOf(next()));
+    const left = [...list.slice(k), ...list.slice(0, k)].filter((r) => !ids.includes(r.id));
+    if (!left.length) { toast('Every routine is in this workout'); return; }
+    actionSheet('Add a routine', left.map((r) => ({ label: `${r.name} · ${r.items.length} exercise${r.items.length === 1 ? '' : 's'}`, fn: () => addRoutineToActive(r) })));
+    return;
+  }
   if (t.closest('[data-discard]')) {
     confirmBox('Discard workout?', 'Nothing from this session will be saved.', 'Discard', true).then((ok) => {
       if (!ok) return;
@@ -932,6 +975,7 @@ async function finishWorkout() {
   if (!ok) return;
   const wk = {
     id: a.id, name: a.name.trim() || 'Workout', start: a.start, end: Date.now(), routineId: a.routineId,
+    ...(a.routineIds?.length > 1 ? { routineIds: a.routineIds } : {}),
     exercises: a.exercises
       .map((ex) => ({ exId: ex.exId, note: ex.note.trim(), sets: ex.sets.filter((s) => s.done).map(({ type, w, r, t }) => ({ type, w, r, t })) }))
       .filter((ex) => ex.sets.length),
@@ -1007,7 +1051,7 @@ VIEWS.today = () => {
   const ups = r.items.filter((it) => { const [lo, hi] = rangeOf(it); return nextFor(it.exId, lo, hi, done)?.up; }).length;
   const last = done.find((w) => w.routineId && list.some((x) => x.id === w.routineId));
   const gymDays = db.plan.days.filter(Boolean).length;
-  const thisWeek = db.workouts.filter((w) => weekStart(w.start) === weekStart(now)).length;
+  const thisWeek = new Set(db.workouts.filter((w) => weekStart(w.start) === weekStart(now)).map((w) => startOfDay(w.start))).size;
   const sub = [`${r.items.length} exercise${r.items.length === 1 ? '' : 's'}`, when, ups ? `<span class="accent">${ups} going up</span>` : ''].filter(Boolean).join(' · ');
   return `${head}<div class="pad">
     ${resume}
@@ -1021,7 +1065,7 @@ VIEWS.today = () => {
     <div class="row2 quiet"><button class="btn ghost" data-pick>Do another routine</button><button class="btn ghost" data-empty>Empty workout</button></div>
 
     <div class="sec-head"><h2>Rotation</h2><small>${gymDays ? `${thisWeek} of ${gymDays} this week` : `${thisWeek} this week`}</small></div>
-    <div class="chain">${list.map((x) => `<span class="link-chip${x === r ? ' next' : ''}${last && x.id === last.routineId ? ' last' : ''}">${last && x.id === last.routineId ? icon('check') : ''}${esc(x.name)}</span>`).join(icon('chev', 'sep'))}</div>
+    <div class="chain">${list.map((x) => { const was = last && (last.routineIds || [last.routineId]).includes(x.id); return `<span class="link-chip${x === r ? ' next' : ''}${was ? ' last' : ''}">${was ? icon('check') : ''}${esc(x.name)}</span>`; }).join(icon('chev', 'sep'))}</div>
     <div class="days" role="group" aria-label="Gym days">${db.plan.days.map((on, d) => `<button class="day${on ? ' on' : ''}${d === dayIndex(now) ? ' today' : ''}" data-day="${d}" aria-pressed="${on}" aria-label="${DAY_NAMES[d]}">${DAY_LETTERS[d]}</button>`).join('')}</div>
     <p class="hint">Tap your gym days. Miss one and the next gym day picks up ${esc(r.name)}.</p>
   </div>`;
@@ -1307,7 +1351,7 @@ $('#view').addEventListener('click', (e) => {
   if (e.target.closest('[data-wmenu]')) {
     const wk = db.workouts.find((w) => w.id === v.id);
     actionSheet(wk.name, [
-      { label: 'Repeat this workout', fn: () => startWorkout({ name: wk.name, items: wk.exercises.map((ex) => ({ exId: ex.exId, types: ex.sets.map((x) => x.type) })), routineId: wk.routineId }) },
+      { label: 'Repeat this workout', fn: () => startWorkout({ name: wk.name, items: wk.exercises.map((ex) => ({ exId: ex.exId, types: ex.sets.map((x) => x.type) })), routineId: wk.routineId, routineIds: wk.routineIds || (wk.routineId ? [wk.routineId] : []) }) },
       { label: 'Save as routine', fn: () => saveAsRoutine(wk) },
       { label: 'Delete workout', danger: true, fn: () => confirmBox('Delete this workout?', 'This can’t be undone.', 'Delete', true).then((ok) => { if (ok) { db.workouts = db.workouts.filter((w) => w !== wk); save(); back(); } }) },
     ]);
@@ -1320,7 +1364,7 @@ function exList() {
   const words = searchWords(exQuery);
   const counts = {};
   for (const wk of db.workouts) for (const ex of wk.exercises) counts[ex.exId] = (counts[ex.exId] || 0) + 1;
-  const fits = (e) => (!exMuscle || e.muscle === exMuscle) && words.every((w) => hay(e).includes(w));
+  const fits = (e) => inMuscle(e, exMuscle) && words.every((w) => hay(e).includes(w));
   const rows = allExercises().filter(fits);
   const more = words.length || exMuscle ? moreExercises().filter(fits).slice(0, 120) : [];
   if (!rows.length && !more.length) return `<p class="empty">No match. Tap New to add “${esc(exQuery)}”.</p>`;
@@ -1333,13 +1377,13 @@ function exList() {
 VIEWS.exercises = () => `<header class="bar"><button class="icon-btn" data-back aria-label="Back">${icon('back')}</button><span class="bar-mid"><b>Exercises</b></span><button class="link" data-newex>${icon('plus')}New</button></header>
   <div class="pad">
     <label class="search top">${icon('search')}<input type="search" data-exq placeholder="Search ${exMap.size} exercises" value="${esc(exQuery)}" autocomplete="off"></label>
-    <div class="chips">${['', ...MUSCLES].map((m) => `<button data-exm="${m}" class="chip${m === exMuscle ? ' on' : ''}">${m || 'All'}</button>`).join('')}</div>
+    <div data-exchips>${muscleChips(exMuscle, 'exm')}</div>
     <div class="list card" data-exlist>${exList()}</div>
   </div>`;
 $('#view').addEventListener('input', (e) => {
   if (cur().view === 'exercises' && e.target.matches('[data-exq]')) {
     exQuery = e.target.value;
-    if (exQuery.trim() && exMuscle) { exMuscle = ''; for (const c of document.querySelectorAll('[data-exm]')) c.classList.toggle('on', c.dataset.exm === ''); }
+    if (exQuery.trim() && exMuscle) { exMuscle = ''; $('[data-exchips]').innerHTML = muscleChips('', 'exm'); }
     $('[data-exlist]').innerHTML = exList();
   }
 });
@@ -1347,7 +1391,7 @@ $('#view').addEventListener('click', (e) => {
   if (cur().view !== 'exercises') return;
   const t = e.target;
   const m = t.closest('[data-exm]');
-  if (m) { exMuscle = m.dataset.exm; for (const c of document.querySelectorAll('[data-exm]')) c.classList.toggle('on', c === m); $('[data-exlist]').innerHTML = exList(); return; }
+  if (m) { exMuscle = m.dataset.exm; $('[data-exchips]').innerHTML = muscleChips(exMuscle, 'exm'); $('[data-exlist]').innerHTML = exList(); return; }
   const open = t.closest('[data-open]');
   if (open) { go({ view: 'exercise', id: open.dataset.open }); return; }
   if (t.closest('[data-newex]')) editCustom(null, (ex) => { rerender(); go({ view: 'exercise', id: ex.id }); });

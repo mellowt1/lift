@@ -346,7 +346,9 @@ body:has(.resume:not([hidden])) { padding-bottom: calc(var(--tabs-h) + var(--saf
 .sheet .search { background: var(--card2); flex: none; margin-top: 8px; }
 .sheet .chip { background: var(--card2); }
 .sheet .chip.on { background: var(--ink); }
-.sheet .chips { flex: none; }
+.sheet .chips, .sheet .chipbox { flex: none; }
+.chips.sub { padding-top: 0; }
+.chips.sub .chip { height: 28px; font-size: 12px; }
 .pick-list { flex: 1; overflow-y: auto; margin: 0 -16px; padding: 0 8px; overscroll-behavior: contain; }
 .pick-row { display: flex; align-items: center; border-radius: 10px; min-height: 56px; }
 .pick-row:has(.pick-main:active) { background: var(--card2); }

@@ -89,6 +89,9 @@ test('rotation goes on from the last routine done', () => {
   assert.equal(nextRoutine(R, [...done, { start: 3, routineId: 'legs' }], null).id, 'push');
   assert.equal(nextRoutine(R, done, 'push').id, 'push', 'a picked routine wins');
   assert.equal(nextRoutine([], done, null), null);
+  assert.equal(nextRoutine(R, [{ start: 1, routineId: 'push', routineIds: ['push', 'pull'] }], null).id, 'legs', 'two routines in one workout skip past both');
+  assert.equal(nextRoutine(R, [{ start: 1, routineId: 'push', routineIds: ['push', 'legs'] }], null).id, 'pull', 'a routine skipped over is still next');
+  assert.equal(nextRoutine(R, [{ start: 1, routineId: 'pull', routineIds: ['pull', 'legs', 'push'] }], null).id, 'legs', 'all three done: round again');
 });
 
 test('next gym day', () => {

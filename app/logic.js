@@ -215,6 +215,7 @@ export function rangeFor(reps) {
 
 // Routine to do next: one picked by hand wins, else the one after the last
 // routine finished, else the first. Missed days never move the rotation.
+// A workout that did two routines (Back + Legs) skips past both.
 export function nextRoutine(routines, workouts, pickedId) {
   if (!routines.length) return null;
   const picked = pickedId && routines.find((r) => r.id === pickedId);
@@ -224,7 +225,12 @@ export function nextRoutine(routines, workouts, pickedId) {
     if (w.routineId && routines.some((r) => r.id === w.routineId) && (!last || w.start > last.start)) last = w;
   }
   if (!last) return routines[0];
+  const did = new Set(last.routineIds || [last.routineId]);
   const i = routines.findIndex((r) => r.id === last.routineId);
+  for (let k = 1; k < routines.length; k++) {
+    const r = routines[(i + k) % routines.length];
+    if (!did.has(r.id)) return r;
+  }
   return routines[(i + 1) % routines.length];
 }
 

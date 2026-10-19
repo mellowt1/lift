@@ -2,6 +2,9 @@
 // kind: 'wr' weight × reps, 'r' reps only (bodyweight), 't' time.
 // Ids are stored in workouts, so never rename or reuse an id; names can change.
 export const MUSCLES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Cardio', 'Other'];
+// The chips in the pickers: Arms and Legs hold the finer muscles, which show under them once picked.
+export const GROUPS = { Arms: ['Biceps', 'Triceps'], Legs: ['Quads', 'Hamstrings', 'Glutes', 'Calves'] };
+export const CHIPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Core', 'Cardio', 'Other'];
 export const EQUIPMENT = ['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Bodyweight', 'Kettlebell', 'Other'];
 
 const ROWS = [
