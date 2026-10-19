@@ -634,20 +634,25 @@ function setRow(ex, s, j, prev, kind, rec) {
       <input class="in" data-f="r" inputmode="numeric" enterkeyhint="done" aria-label="Reps" placeholder="${h.r ?? ''}" value="${s.r ?? ''}">`;
   else if (kind === 'r') fields = `<input class="in" data-f="r" inputmode="numeric" enterkeyhint="done" aria-label="Reps" placeholder="${h.r ?? ''}" value="${s.r ?? ''}">`;
   else fields = `<input class="in" data-f="t" inputmode="numeric" enterkeyhint="done" aria-label="Time" placeholder="${h.t ? fmtClock(h.t) : '0:00'}" value="${s.t != null ? fmtClock(s.t) : ''}">`;
-  return `<div class="set-swipe"><span class="set-del" aria-hidden="true">Delete</span><div class="set-row${s.done ? ' done' : ''}" data-si="${j}">
+  const now = !s.done && ex.sets.findIndex((x) => !x.done) === j;
+  return `<div class="set-swipe"><span class="set-del" aria-hidden="true">Delete</span><div class="set-row${s.done ? ' done' : ''}${now ? ' cur' : ''}${pr ? ' is-pr' : ''}" data-si="${j}">
     <button class="set-no t-${s.type}" data-setmenu aria-label="Set ${label} options">${label}</button>
-    <button class="prev" data-prev ${p ? '' : 'disabled'}><span>${esc(prevTxt)}</span>${pr ? '<i class="pr">PR</i>' : ''}</button>
-    ${fields}
+    <button class="prev" data-prev ${p ? '' : 'disabled'}><span>${esc(prevTxt)}</span></button>
+    ${pr ? '<i class="pr">PR</i>' : ''}${fields}
     <button class="tick" data-tick aria-label="${s.done ? 'Mark set not done' : 'Mark set done'}">${icon('check')}</button>
   </div></div>`;
 }
 
+// Today's target for an exercise: "↑ 95 kg" in the meta row; tapping it says why.
+const sugWhy = (ex) => {
+  const u = unit();
+  return ex.sug.up ? `Going up to ${fmtW(ex.sug.w, u)} ${u}. You hit ${ex.hi} on every set last time.`
+    : `Staying at ${fmtW(ex.sug.w, u)} ${u}. Get ${ex.hi} on every set to go up.`;
+};
 function sugNote(ex) {
   if (!ex.sug) return '';
   const u = unit();
-  return ex.sug.up
-    ? `<p class="sug up">${icon('up-arrow')}<span>Going up to ${fmtW(ex.sug.w, u)} ${u}. You hit ${ex.hi} on every set last time.</span></p>`
-    : `<p class="sug hold">${icon('minus')}<span>Staying at ${fmtW(ex.sug.w, u)} ${u}. Get ${ex.hi} on every set to go up.</span></p>`;
+  return `<button class="goal${ex.sug.up ? ' up' : ''}" data-sug aria-label="${esc(sugWhy(ex))}">${ex.sug.up ? '↑ ' : ''}${fmtW(ex.sug.w, u)} ${u}</button>`;
 }
 
 function exCard(ex, i, done) {
@@ -661,9 +666,8 @@ function exCard(ex, i, done) {
       <button class="ex-name" data-open="${ex.exId}">${thumb(e, 'round')}<span>${esc(e.name)}</span></button>
       <button class="icon-btn" data-exmenu aria-label="Exercise options">${icon('more')}</button>
     </div>
-    <div class="ex-meta">${ex.lo ? `<span>${work} × ${rangeText(ex.lo, ex.hi)}</span>` : ''}<button class="rest-chip" data-restpick>${icon('timer')}Rest ${ex.rest ? fmtClock(ex.rest) : 'off'}</button></div>
-    ${sugNote(ex)}
-    <input class="ex-note" data-note placeholder="Add a note" value="${esc(ex.note)}" maxlength="200">
+    <div class="ex-meta"><button class="rest-chip" data-restpick>${icon('timer')}Rest ${ex.rest ? fmtClock(ex.rest) : 'off'}</button>${ex.lo ? `<span>${work} × ${rangeText(ex.lo, ex.hi)}</span>` : ''}${sugNote(ex)}</div>
+    ${ex.note || ex.noting ? `<input class="ex-note" data-note placeholder="Note" value="${esc(ex.note)}" maxlength="200">` : ''}
     <div class="sets k-${e.kind}">
       <div class="sets-head"><span>Set</span><span>Previous</span>${cols.map((c) => `<span>${c === 'kg' ? unit() : c}</span>`).join('')}<span>${icon('check')}</span></div>
       ${ex.sets.map((s, j) => setRow(ex, s, j, prev, e.kind, rec)).join('')}
@@ -679,16 +683,11 @@ VIEWS.active = () => {
   const { vol, sets } = activeStats();
   return `<header class="bar">
       <button class="icon-btn" data-min aria-label="Minimise workout">${icon('down')}</button>
-      <span class="bar-mid"><span class="live-dot"></span><b id="a-time">${fmtClock((Date.now() - a.start) / 1000)}</b></span>
+      <span class="bar-mid a-mid"><input class="wk-name" data-wkname value="${esc(a.name)}" maxlength="60" aria-label="Workout name"><small id="a-time">${fmtClock((Date.now() - a.start) / 1000)}</small></span>
       <button class="btn primary sm" data-finish>Finish</button>
     </header>
+    <div class="a-stats"><span>Volume<b id="a-vol">${volText(vol)}</b></span><span>Sets<b id="a-sets">${sets}</b></span></div>
     <div class="pad">
-      <input class="wk-name" data-wkname value="${esc(a.name)}" maxlength="60" aria-label="Workout name">
-      <div class="stats3">
-        <div><small>Volume</small><b id="a-vol">${volText(vol)}</b></div>
-        <div><small>Sets</small><b id="a-sets">${sets}</b></div>
-        <div><small>Started</small><b>${timeFmt.format(a.start)}</b></div>
-      </div>
       ${a.exercises.length ? a.exercises.map((ex, i) => exCard(ex, i, done)).join('') : `<div class="empty-card"><p><b>Get started</b></p><p>Add an exercise to begin logging sets.</p></div>`}
       <button class="btn primary block" data-addex>${icon('plus')}Add exercise</button>
       ${db.routines.length ? `<button class="btn soft block" data-addroutine>${icon('plus')}Add a routine</button>` : ''}
@@ -808,10 +807,12 @@ $('#view').addEventListener('click', (e) => {
     })));
     return;
   }
+  if (t.closest('[data-sug]')) { toast(sugWhy(ex)); return; }
   if (t.closest('[data-exmenu]')) {
     const list = a.exercises;
     const items = [];
     if (list.length > 1) items.push({ label: 'Reorder exercises', fn: () => reorderSheet(list, (x) => `${x.sets.length} set${x.sets.length === 1 ? '' : 's'}`, () => { save(); rerender(); }) });
+    if (!ex.note && !ex.noting) items.push({ label: 'Add a note', fn: () => { ex.noting = true; rerender(); document.querySelectorAll('[data-ei]')[i]?.querySelector('[data-note]')?.focus(); } });
     items.push({ label: 'Replace exercise', fn: () => pickExercises({ multi: false, title: 'Replace with', onDone: ([id]) => { ex.exId = id; ex.rest = db.restFor[id] ?? ex.rest; save(); rerender(); } }) });
     items.push({ label: 'Remove exercise', danger: true, fn: () => { list.splice(i, 1); save(); rerender(); } });
     actionSheet(getEx(ex.exId).name, items);

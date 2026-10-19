@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lift redesign: three mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face { font-family: 'DSEG7'; src: url('https://cdn.jsdelivr.net/npm/dseg@0.46.0/fonts/DSEG7-Classic/DSEG7Classic-Bold.woff2') format('woff2'); font-display: block; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #E7E7E4; font-family: system-ui, sans-serif; color: #1a1a1a; padding: 32px 28px 48px; }
+.page-head { max-width: 1290px; margin: 0 auto 24px; }
+.page-head h1 { font: 700 26px/1.2 'Archivo', sans-serif; }
+.page-head p { color: #555; margin-top: 6px; font-size: 15px; }
+.row { display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; }
+figure { width: 390px; }
+figcaption { margin-top: 14px; font-size: 14px; color: #444; line-height: 1.45; }
+figcaption b { display: block; font-size: 17px; color: #111; margin-bottom: 2px; }
+.phone { width: 390px; height: 844px; border-radius: 44px; overflow: hidden; position: relative; box-shadow: 0 0 0 10px #111, 0 30px 60px rgba(0,0,0,.25); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- 1. Programme Sheet ---------- */
+.ps { background: #fff; color: #141414; font-family: 'Archivo', sans-serif; }
+.ps .top { display: flex; align-items: center; justify-content: space-between; padding: 54px 20px 12px; }
+.ps .top .min { font-size: 22px; width: 32px; }
+.ps .clock { font: 600 20px 'Archivo'; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.ps .finish { background: #141414; color: #fff; font: 700 15px 'Archivo'; letter-spacing: .08em; text-transform: uppercase; padding: 10px 16px; }
+.ps .sheet-head { margin: 4px 20px 0; border-top: 3px solid #141414; border-bottom: 1px solid #141414; padding: 8px 0 7px; display: flex; justify-content: space-between; font: 700 12px 'Archivo'; letter-spacing: .12em; text-transform: uppercase; }
+.ps .sheet-head span:last-child { font-weight: 500; color: #6B6B66; }
+.ps .ex { margin: 18px 20px 0; }
+.ps .ex-top { display: flex; align-items: baseline; gap: 10px; }
+.ps .ex-no { font: 800 13px 'Archivo'; border: 1.5px solid #141414; width: 22px; height: 22px; display: grid; place-items: center; flex: none; transform: translateY(-3px); }
+.ps .ex-name { font: 800 23px/1.05 'Archivo'; font-stretch: 72%; text-transform: uppercase; letter-spacing: .01em; flex: 1; }
+.ps .ex-rx { font: 700 15px 'Archivo'; font-variant-numeric: tabular-nums; }
+.ps .target { margin: 8px 0 10px 32px; font-size: 14px; color: #3a3a37; display: flex; align-items: center; gap: 6px; }
+.ps .circled { position: relative; font-weight: 800; color: #141414; padding: 0 5px; }
+.ps .circled svg { position: absolute; left: -8px; top: -9px; width: calc(100% + 16px); height: calc(100% + 18px); overflow: visible; }
+.ps .up { color: #D7262E; font-weight: 700; }
+.ps .cols, .ps .set { display: grid; grid-template-columns: 34px 1fr 78px 56px 48px; align-items: center; }
+.ps .cols { font: 700 10.5px 'Archivo'; letter-spacing: .14em; color: #6B6B66; padding: 0 0 5px; border-bottom: 1px solid #141414; }
+.ps .cols span:nth-child(3), .ps .cols span:nth-child(4) { text-align: right; padding-right: 8px; }
+.ps .cols span:last-child { text-align: center; }
+.ps .set { height: 58px; border-bottom: 1px solid #D9D9D6; position: relative; }
+.ps .set .n { font: 700 15px 'Archivo'; }
+.ps .set .last { font-size: 14px; color: #6B6B66; font-variant-numeric: tabular-nums; }
+.ps .set .kg, .ps .set .reps { font: 700 27px 'Archivo'; font-stretch: 85%; text-align: right; padding-right: 8px; font-variant-numeric: tabular-nums; position: relative; z-index: 1; }
+.ps .set .reps { font-weight: 600; }
+.ps .box { width: 40px; height: 40px; border: 2px solid #141414; justify-self: center; display: grid; place-items: center; position: relative; z-index: 1; background: #fff; }
+.ps .box svg { width: 24px; height: 24px; }
+.ps .set.done .hl { position: absolute; left: 26px; right: 54px; top: 13px; bottom: 13px; background: #F7E733; mix-blend-mode: multiply; border-radius: 3px 8px 4px 9px / 6px 3px 7px 3px; transform: rotate(-.6deg); opacity: .9; }
+.ps .set.done .kg, .ps .set.done .reps { color: #141414; }
+.ps .set.now { border-top: 2px solid #141414; border-bottom: 2px solid #141414; margin-top: -1px; }
+.ps .set.now .n::before { content: '▸'; margin-right: 2px; }
+.ps .set.todo .kg, .ps .set.todo .reps { color: #9a9a95; font-weight: 500; }
+.ps .addset { font: 600 13px 'Archivo'; letter-spacing: .1em; text-transform: uppercase; color: #6B6B66; padding: 12px 0 0 34px; }
+.ps .rest { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-top: 3px solid #141414; padding: 12px 20px 34px; display: grid; grid-template-columns: 1fr auto; align-items: end; row-gap: 8px; }
+.ps .rest .lbl { font: 700 11px 'Archivo'; letter-spacing: .16em; text-transform: uppercase; color: #6B6B66; }
+.ps .rest .t { font: 800 52px/0.9 'Archivo'; font-stretch: 80%; font-variant-numeric: tabular-nums; }
+.ps .rest .btns { display: flex; gap: 8px; }
+.ps .rest .btns span { border: 1.5px solid #141414; font: 700 14px 'Archivo'; padding: 11px 14px; }
+.ps .rest .track { grid-column: 1 / -1; height: 1px; background: #D9D9D6; position: relative; }
+.ps .rest .track i { position: absolute; left: 0; top: -1px; height: 3px; width: 40%; background: #141414; }
+
+/* ---------- 2. Meet Scoreboard ---------- */
+.ms { background: #0A0A0A; color: #F2F2F2; font-family: 'Barlow Semi Condensed', sans-serif; }
+.ms .top { display: flex; align-items: center; justify-content: space-between; padding: 54px 18px 12px; }
+.ms .top .plat { font-weight: 700; font-size: 13px; letter-spacing: .2em; color: #8a8a8a; }
+.ms .clock { font-family: 'DSEG7'; font-size: 18px; color: #F2F2F2; }
+.ms .finish { border: 1.5px solid #F2F2F2; font-weight: 700; font-size: 15px; letter-spacing: .14em; padding: 8px 14px; }
+.ms .board { margin: 4px 14px 0; background: #121212; border: 1px solid #262626; padding: 14px 16px 16px; }
+.ms .lbl { font-weight: 700; font-size: 12px; letter-spacing: .2em; color: #8a8a8a; text-transform: uppercase; }
+.ms .lift { font-weight: 700; font-size: 26px; letter-spacing: .04em; text-transform: uppercase; margin-top: 2px; }
+.ms .led { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; position: relative; }
+.ms .led .d { font-family: 'DSEG7'; font-size: 74px; color: #FFB000; text-shadow: 0 0 18px rgba(255,176,0,.35); line-height: 1; position: relative; }
+.ms .led .d::before { content: attr(data-ghost); position: absolute; left: 0; top: 0; color: rgba(255,176,0,.07); text-shadow: none; }
+.ms .led .u { font-weight: 700; font-size: 18px; color: #FFB000; letter-spacing: .1em; }
+.ms .led .x { font-family: 'DSEG7'; font-size: 40px; color: #FFB000; margin-left: auto; }
+.ms .meta { display: flex; justify-content: space-between; margin-top: 10px; font-size: 15px; color: #9a9a9a; }
+.ms .meta .up { color: #F2F2F2; font-weight: 700; }
+.ms .lights { display: flex; gap: 14px; justify-content: center; align-items: center; margin-top: 16px; padding: 14px 0 4px; border-top: 1px solid #262626; }
+.ms .lights i { width: 54px; height: 54px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #2a2a2a, #161616); box-shadow: inset 0 0 0 2px #333; }
+.ms .lights span { font-weight: 700; letter-spacing: .2em; font-size: 12px; color: #8a8a8a; margin-left: 6px; }
+.ms .attempts { margin: 12px 14px 0; border: 1px solid #262626; }
+.ms .att { display: grid; grid-template-columns: 38px 1fr 76px; align-items: center; height: 54px; padding: 0 14px; border-bottom: 1px solid #1e1e1e; }
+.ms .att:last-child { border-bottom: 0; }
+.ms .att .n { font-weight: 700; color: #8a8a8a; }
+.ms .att .w { font-family: 'DSEG7'; font-size: 24px; color: #F2F2F2; }
+.ms .att .w small { font-family: 'Barlow Semi Condensed'; font-size: 15px; color: #8a8a8a; margin: 0 4px; }
+.ms .att .l { display: flex; gap: 6px; justify-content: flex-end; }
+.ms .att .l b { width: 16px; height: 16px; border-radius: 50%; background: #1c1c1c; box-shadow: inset 0 0 0 1.5px #333; }
+.ms .att.good .l b { background: #F2F2F2; box-shadow: 0 0 8px rgba(255,255,255,.5); }
+.ms .att.now { background: #17130a; box-shadow: inset 3px 0 0 #FFB000; }
+.ms .att.now .w { color: #FFB000; }
+.ms .att.todo .w { color: #555; }
+.ms .next { margin: 12px 14px 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border: 1px dashed #333; }
+.ms .next b { font-size: 17px; letter-spacing: .04em; text-transform: uppercase; }
+.ms .next .w { font-family: 'DSEG7'; font-size: 18px; color: #bbb; }
+.ms .rest { position: absolute; left: 0; right: 0; bottom: 0; background: #121212; border-top: 1px solid #262626; padding: 12px 18px 34px; display: flex; align-items: center; justify-content: space-between; }
+.ms .rest .t { font-family: 'DSEG7'; font-size: 40px; color: #E8202A; text-shadow: 0 0 14px rgba(232,32,42,.4); }
+.ms .rest .btns { display: flex; gap: 8px; }
+.ms .rest .btns span { border: 1.5px solid #444; font-weight: 700; letter-spacing: .1em; padding: 10px 12px; font-size: 14px; }
+
+/* ---------- 3. Hevy standard ---------- */
+.hv { background: #121212; color: #fff; font-family: -apple-system, 'SF Pro Text', system-ui, 'Segoe UI', sans-serif; }
+.hv .top { display: flex; align-items: center; justify-content: space-between; padding: 52px 16px 10px; }
+.hv .top .mid { text-align: center; }
+.hv .top .mid b { font-size: 17px; display: block; }
+.hv .top .mid small { color: #9E9E9E; font-size: 13px; font-variant-numeric: tabular-nums; }
+.hv .finish { background: #2F80ED; color: #fff; font-weight: 600; font-size: 15px; padding: 8px 16px; border-radius: 8px; }
+.hv .chev { font-size: 22px; color: #fff; width: 60px; }
+.hv .stats { display: flex; gap: 20px; padding: 6px 16px 12px; border-bottom: 1px solid #262626; font-size: 13px; color: #9E9E9E; }
+.hv .stats b { color: #fff; font-weight: 600; display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.hv .ex { padding: 14px 16px 6px; }
+.hv .ex-top { display: flex; align-items: center; gap: 12px; }
+.hv .thumb { width: 40px; height: 40px; border-radius: 50%; background: #2a2a2a center/cover; flex: none; }
+.hv .ex-name { color: #2F80ED; font-weight: 600; font-size: 17px; flex: 1; }
+.hv .dots { color: #9E9E9E; font-size: 20px; letter-spacing: 1px; }
+.hv .meta { display: flex; gap: 12px; align-items: center; margin: 10px 0 8px; font-size: 14px; }
+.hv .meta .chip { color: #2F80ED; font-weight: 500; }
+.hv .meta .goal { color: #9E9E9E; }
+.hv .meta .goal b { color: #4FA3FF; font-weight: 600; }
+.hv .cols, .hv .set { display: grid; grid-template-columns: 44px 1fr 72px 60px 52px; align-items: center; gap: 4px; }
+.hv .cols { font-size: 12px; font-weight: 600; color: #9E9E9E; letter-spacing: .04em; padding: 0 4px 6px; }
+.hv .cols span:nth-child(3), .hv .cols span:nth-child(4), .hv .cols span:last-child { text-align: center; }
+.hv .set { height: 50px; padding: 0 4px; border-radius: 8px; margin-bottom: 4px; }
+.hv .set .n { font-weight: 700; text-align: center; background: #262626; border-radius: 6px; height: 36px; display: grid; place-items: center; font-size: 15px; }
+.hv .set .prev { color: #9E9E9E; font-size: 14px; font-variant-numeric: tabular-nums; padding-left: 6px; }
+.hv .set .in { background: #262626; border-radius: 6px; height: 40px; display: grid; place-items: center; font-weight: 600; font-size: 17px; font-variant-numeric: tabular-nums; color: #707070; }
+.hv .set .tick { height: 44px; border-radius: 8px; background: #262626; display: grid; place-items: center; color: #9E9E9E; font-size: 20px; }
+.hv .set.done { background: #16301F; }
+.hv .set.done .n, .hv .set.done .in { background: transparent; color: #fff; }
+.hv .set.done .tick { background: #2EAD5B; color: #fff; }
+.hv .set.now .in { color: #fff; box-shadow: inset 0 0 0 1.5px #2F80ED; }
+.hv .add { margin: 6px 4px 0; background: #262626; border-radius: 8px; text-align: center; padding: 11px; font-weight: 600; font-size: 15px; color: #fff; }
+.hv .sep { height: 8px; background: #0B0B0B; margin-top: 14px; }
+.hv .rest { position: absolute; left: 0; right: 0; bottom: 0; background: #1E1E1E; border-radius: 16px 16px 0 0; padding: 14px 16px 34px; }
+.hv .rest .bar { height: 4px; background: #333; border-radius: 2px; overflow: hidden; }
+.hv .rest .bar i { display: block; height: 100%; width: 40%; background: #2F80ED; }
+.hv .rest .rowx { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+.hv .rest .t { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hv .rest .btns { display: flex; gap: 8px; }
+.hv .rest .btns span { background: #2a2a2a; border-radius: 8px; padding: 10px 14px; font-weight: 600; }
+.hv .rest .btns span.blue { background: #2F80ED; }
+</style>
+</head>
+<body>
+<div class="page-head">
+  <h1>Lift: three looks for the workout screen</h1>
+  <p>Same moment in each: Chest day, Bench Press set 1 done, set 2 is next (going up to 95 kg), rest timer running. The bottom bar is the rest timer.</p>
+</div>
+<div class="row">
+
+<!-- 1. Programme Sheet -->
+<figure>
+<div class="phone ps">
+  <div class="top"><span class="min">⌄</span><span class="clock">24:13</span><span class="finish">Finish</span></div>
+  <div class="sheet-head"><span>Chest · Week 12</span><span>Mon 19 Oct</span></div>
+
+  <div class="ex">
+    <div class="ex-top"><span class="ex-no">1</span><span class="ex-name">Bench Press (Barbell)</span><span class="ex-rx">3 × 6–8</span></div>
+    <div class="target">Today
+      <span class="circled num">95 kg<svg viewBox="0 0 100 40" preserveAspectRatio="none"><path d="M8 22 C 6 6, 70 2, 92 14 C 104 24, 80 38, 44 37 C 14 36, 2 28, 14 10" fill="none" stroke="#D7262E" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg></span>
+      <span class="up">↑ 2.5</span> · rest 1:30</div>
+    <div class="cols"><span>SET</span><span>LAST</span><span>KG</span><span>REPS</span><span>✓</span></div>
+    <div class="set done"><span class="hl"></span><span class="n">1</span><span class="last">92.5 × 8</span><span class="kg">95</span><span class="reps">8</span><span class="box"><svg viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="square"/></svg></span></div>
+    <div class="set now"><span class="n">2</span><span class="last">92.5 × 8</span><span class="kg">95</span><span class="reps">8</span><span class="box"></span></div>
+    <div class="set todo"><span class="n">3</span><span class="last">92.5 × 7</span><span class="kg">95</span><span class="reps">8</span><span class="box"></span></div>
+    <div class="addset">+ Add set</div>
+  </div>
+
+  <div class="ex">
+    <div class="ex-top"><span class="ex-no">2</span><span class="ex-name">Incline Bench Press (Dumbbell)</span><span class="ex-rx">3 × 8–12</span></div>
+    <div class="target">Today <b class="num">30 kg</b> · hold, aim for 12s</div>
+    <div class="cols"><span>SET</span><span>LAST</span><span>KG</span><span>REPS</span><span>✓</span></div>
+  </div>
+
+  <div class="rest"><span class="lbl">Rest · then set 2</span><span></span><span class="t">1:12</span><span class="btns"><span>+30s</span><span>Skip</span></span><span class="track"><i></i></span></div>
+</div>
+<figcaption><b>The Programme Sheet</b>Your coach's printed sheet. White page, hairline rules, big numbers. Done sets get a highlighter stroke, a weight going up is circled in red pen, the set you're on has the heavy rule. No cards, no tiles.</figcaption>
+</figure>
+
+<!-- 2. Meet Scoreboard -->
+<figure>
+<div class="phone ms">
+  <div class="top"><span class="plat">PLATFORM · CHEST</span><span class="clock">24:13</span><span class="finish">FINISH</span></div>
+  <div class="board">
+    <div class="lbl">Attempt 2 of 3</div>
+    <div class="lift">Bench Press</div>
+    <div class="led"><span class="d" data-ghost="88.8">95.0</span><span class="u">KG</span><span class="x">×8</span></div>
+    <div class="meta"><span>Last time 92.5 × 8</span><span class="up">↑ +2.5 kg</span></div>
+    <div class="lights"><i></i><i></i><i></i><span>TAP = GOOD LIFT</span></div>
+  </div>
+  <div class="attempts">
+    <div class="att good"><span class="n">1</span><span class="w">95.0<small>×</small>8</span><span class="l"><b></b><b></b><b></b></span></div>
+    <div class="att now"><span class="n">2</span><span class="w">95.0<small>×</small>8</span><span class="l"><b></b><b></b><b></b></span></div>
+    <div class="att todo"><span class="n">3</span><span class="w">95.0<small>×</small>8</span><span class="l"><b></b><b></b><b></b></span></div>
+  </div>
+  <div class="next"><span><span class="lbl">Next</span><br><b>Incline DB Press</b></span><span class="w">30.0 ×10</span></div>
+  <div class="rest"><span><span class="lbl">Rest</span><br><span class="t">1:12</span></span><span class="btns"><span>+30</span><span>SKIP</span></span></div>
+</div>
+<figcaption><b>Meet Scoreboard</b>Each set is an attempt on a powerlifting board. The set you're on fills the top in big amber LED digits; ticking it lights the three judge lights white. Readable from the bench.</figcaption>
+</figure>
+
+<!-- 3. Hevy standard -->
+<figure>
+<div class="phone hv">
+  <div class="top"><span class="chev">⌄</span><span class="mid"><b>Chest</b><small>24:13</small></span><span class="finish">Finish</span></div>
+  <div class="stats"><span>Volume<b>760 kg</b></span><span>Sets<b>1</b></span></div>
+  <div class="ex">
+    <div class="ex-top"><span class="thumb" style="background-image:url(https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exercises/Barbell_Bench_Press_-_Medium_Grip/0.jpg)"></span><span class="ex-name">Bench Press (Barbell)</span><span class="dots">•••</span></div>
+    <div class="meta"><span class="chip">⏱ Rest 1:30</span><span class="goal">3 × 6–8 · <b>↑ 95 kg</b></span></div>
+    <div class="cols"><span style="text-align:center">SET</span><span style="padding-left:6px">PREVIOUS</span><span>KG</span><span>REPS</span><span>✓</span></div>
+    <div class="set done"><span class="n">1</span><span class="prev">92.5 kg × 8</span><span class="in">95</span><span class="in">8</span><span class="tick">✓</span></div>
+    <div class="set now"><span class="n">2</span><span class="prev">92.5 kg × 8</span><span class="in">95</span><span class="in">8</span><span class="tick">✓</span></div>
+    <div class="set"><span class="n">3</span><span class="prev">92.5 kg × 7</span><span class="in">95</span><span class="in">8</span><span class="tick">✓</span></div>
+    <div class="add">+ Add Set</div>
+  </div>
+  <div class="sep"></div>
+  <div class="ex">
+    <div class="ex-top"><span class="thumb" style="background-image:url(https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exercises/Incline_Dumbbell_Press/0.jpg)"></span><span class="ex-name">Incline Bench Press (Dumbbell)</span><span class="dots">•••</span></div>
+    <div class="meta"><span class="chip">⏱ Rest 1:30</span><span class="goal">3 × 8–12 · 30 kg</span></div>
+  </div>
+  <div class="rest"><div class="bar"><i></i></div><div class="rowx"><span class="t">1:12</span><span class="btns"><span>−15</span><span>+15</span><span class="blue">Skip</span></span></div></div>
+</div>
+<figcaption><b>The Hevy standard</b>What you know from Hevy, tidied: dark, blue names, green done rows, sets right under the header (no stat tiles), bigger tick buttons. Familiar, but it looks like Hevy.</figcaption>
+</figure>
+
+</div>
+</body>
+</html>
