@@ -1486,8 +1486,22 @@ $('#view').addEventListener('click', (e) => {
 const LOW = 4; // work sets a week under which a muscle counts as getting little work
 const FIND_MUSCLES = MUSCLES.filter((m) => m !== 'Cardio' && m !== 'Other');
 let ask = { q: '', busy: false, answer: '', picks: [], error: '' };
+// Lessons (paul-hub src/lessons.js, 2026-10-19): which of Claude's picks Paul added and which he
+// left. On Sundays Claude turns that into rules he keeps or drops on Morning; kept ones go into Ask.
+function teachAsk(kind, before, note) {
+  if (!db.settings.hub || !navigator.onLine || !before) return;
+  fetch(`${HUB}/api/lessons/${db.settings.hub}/feedback`, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app: 'lift', kind, before, note }) }).catch(() => {});
+}
+// Once per answer: the picks still not added when he asks again or leaves the app.
+function settleAsk() {
+  if (!ask.picks.length || ask.settled) return;
+  ask.settled = true;
+  const left = ask.picks.map((p) => p.name).filter((n) => !(ask.added || []).includes(n));
+  if (left.length) teachAsk('skipped', left.join(', '), ask.q);
+}
+addEventListener('pagehide', settleAsk);
 
-function addToRoutine(exId) {
+function addToRoutine(exId, onAdded) {
   const e = getEx(exId);
   if (!db.routines.length) { toast('Build a routine first'); return; }
   actionSheet(`Add ${e.name} to`, db.routines.map((r) => {
@@ -1499,6 +1513,7 @@ function addToRoutine(exId) {
         r.items.push({ exId, sets: 3, ...(e.kind === 'wr' ? { lo: DEFAULT_RANGE[0], hi: DEFAULT_RANGE[1] } : {}) });
         save();
         toast(`Added to ${r.name}`);
+        if (onAdded) onAdded();
         rerender();
       },
     };
@@ -1559,6 +1574,7 @@ VIEWS.find = () => {
 async function askClaude() {
   const q = ask.q.trim();
   if (!q || ask.busy || !db.settings.hub) return;
+  settleAsk();
   ask = { q, busy: true, answer: '', picks: [], error: '' };
   const out = () => { const el = $('[data-askout]'); if (cur().view === 'find' && el) { el.innerHTML = askHtml(); const go = $('[data-askgo]'); if (go) go.disabled = ask.busy; } };
   out();
@@ -1587,7 +1603,14 @@ $('#view').addEventListener('submit', (e) => { if (cur().view === 'find' && e.ta
 $('#view').addEventListener('click', (e) => {
   if (cur().view !== 'find') return;
   const add = e.target.closest('[data-add]');
-  if (add) { addToRoutine(add.dataset.add); return; }
+  if (add) {
+    const name = getEx(add.dataset.add).name;
+    const pick = ask.picks.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    addToRoutine(add.dataset.add, () => {
+      if (pick && !(ask.added || []).includes(pick.name)) { ask.added = [...(ask.added || []), pick.name]; teachAsk('approved', pick.name, ask.q); }
+    });
+    return;
+  }
   const open = e.target.closest('[data-open]');
   if (open) { go({ view: 'exercise', id: open.dataset.open }); return; }
   const s = e.target.closest('[data-search]');
