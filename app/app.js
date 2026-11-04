@@ -441,21 +441,30 @@ function editCustom(ex, onSaved) {
 // ---------- rest timer ----------
 const rest = { end: 0, total: 0, doneAt: 0 };
 let audio = null;
+// 'ambient' lets the chime mix with Spotify instead of pausing it (iOS 17+);
+// the context is suspended between chimes so it never holds the audio session.
 function unlockAudio() {
-  try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); audio.resume?.(); } catch {}
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'ambient';
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    Promise.resolve(audio.resume?.()).then(() => audio.suspend?.()).catch(() => {});
+  } catch {}
 }
 function chime() {
   if (!audio) return;
-  const t0 = audio.currentTime;
-  for (const [i, f] of [[0, 784], [1, 1047]]) {
-    const o = audio.createOscillator(), g = audio.createGain();
-    o.type = 'sine'; o.frequency.value = f;
-    g.gain.setValueAtTime(0, t0 + i * 0.18);
-    g.gain.linearRampToValueAtTime(0.12, t0 + i * 0.18 + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.18 + 0.5);
-    o.connect(g).connect(audio.destination);
-    o.start(t0 + i * 0.18); o.stop(t0 + i * 0.18 + 0.55);
-  }
+  Promise.resolve(audio.resume?.()).then(() => {
+    const t0 = audio.currentTime;
+    for (const [i, f] of [[0, 784], [1, 1047]]) {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t0 + i * 0.18);
+      g.gain.linearRampToValueAtTime(0.12, t0 + i * 0.18 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.18 + 0.5);
+      o.connect(g).connect(audio.destination);
+      o.start(t0 + i * 0.18); o.stop(t0 + i * 0.18 + 0.55);
+    }
+    setTimeout(() => audio.suspend?.(), 1000);
+  }).catch(() => {});
 }
 function startRest(sec) {
   if (!sec) return;
