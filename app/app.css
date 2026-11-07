@@ -151,6 +151,7 @@ button.card:active { background: var(--card2); }
 .ex-meta { display: flex; align-items: center; flex-wrap: wrap; column-gap: 12px; margin: 4px 0 8px; color: var(--ink2); font-size: 14px; }
 .goal { color: var(--ink2); font-size: 14px; font-weight: 600; min-height: 32px; }
 .goal.up { color: var(--accent); }
+.goal.down { color: var(--ink); }
 .ex-note:focus { outline: none; color: var(--ink); }
 .ex-note::placeholder { color: var(--ink3); }
 .rest-chip { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-size: 14px; font-weight: 600; min-height: 32px; }
@@ -424,6 +425,7 @@ a.btn { text-decoration: none; color: inherit; }
 .thumb.round { border-radius: 50%; }
 .glyph { display: grid; place-items: center; color: var(--ink3); }
 .glyph .ic { width: 20px; height: 20px; }
+.downc { font-style: normal; font-weight: 700; color: var(--ink2); margin-right: 2px; }
 .ic.upc { width: 14px; height: 14px; color: var(--accent); stroke-width: 2.6; }
 .ic.sep { width: 12px; height: 12px; color: var(--ink3); }
 
@@ -551,3 +553,13 @@ a.btn { text-decoration: none; color: inherit; }
 .mbar.low span, .mbar.low em { color: var(--ink3); }
 .mbar.low i b { background: var(--ink3); }
 .to-routine { margin-top: 10px; }
+
+/* heart rate */
+.hr-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hr-top .nt-title { margin: 0; }
+.hr-nums { display: flex; gap: 22px; margin: 6px 0 4px; }
+.hr-nums b { font-family: var(--cond); font-size: 24px; font-weight: 600; }
+.hr-nums small { color: var(--ink2); font-size: 12px; margin-left: 4px; }
+.hr-line { display: block; width: 100%; height: 60px; margin: 6px 0 4px; }
+.hr-line polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.set-in { width: 84px; text-align: right; background: var(--card2); border: 0; border-radius: 8px; padding: 6px 12px; font-weight: 600; }

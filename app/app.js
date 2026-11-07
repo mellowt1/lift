@@ -2,7 +2,7 @@ import { BUILT_IN, MUSCLES, GROUPS, CHIPS, STAPLES, EQUIPMENT, HEVY_ALIAS, HOWTO
 import {
   uid, toUnit, fromUnit, fmtNum, fmtW, fmtBig, fmtClock, fmtDuration, parseTime, parseNum, e1rm, isWork,
   workoutVolume, workoutSetCount, bests, prsFor, PR_LABEL, previousSets, weeklyCounts, streakWeeks, progression, weekStart,
-  RANGES, DEFAULT_RANGE, stepFor, suggest, muscleWeek, nextRoutine, nextGymDay, dayIndex, startOfDay,
+  RANGES, DEFAULT_RANGE, stepFor, suggest, plan, sessionsOf, warmups, hrStats, hrPerExercise, muscleWeek, nextRoutine, nextGymDay, dayIndex, startOfDay,
   hevyWorkouts, kindFromSets, matchExercise, routinesFromHistory, daysFromHistory,
 } from './logic.js';
 
@@ -95,11 +95,12 @@ const doneWorkouts = () => [...db.workouts].sort((a, b) => b.start - a.start);
 // Rep range of a routine item; Lift 1 routines had none, so weight × reps gets 8–12.
 const rangeOf = (it) => (kindOf(it.exId) === 'wr' ? [it.lo ?? DEFAULT_RANGE[0], it.hi ?? DEFAULT_RANGE[1]] : [null, null]);
 const rangeText = (lo, hi) => (lo ? `${lo}–${hi}` : '');
-// The weight to lift next time for one exercise, from its last session.
-function nextFor(exId, lo, hi, done = doneWorkouts()) {
+// The weight to lift next time for one exercise: from its last session, lower after a break
+// of two weeks or more, then climbing back. Without a rep range only a break gives a number.
+function nextFor(exId, lo, hi, done = doneWorkouts(), now = Date.now()) {
   const e = getEx(exId);
-  if (e.kind !== 'wr' || !hi) return null;
-  return suggest(previousSets(done, exId), lo, hi, stepFor(e.equip, unit()));
+  if (e.kind !== 'wr') return null;
+  return plan(sessionsOf(done, exId), lo, hi, stepFor(e.equip, unit()), now);
 }
 
 function thumb(e, cls = '') {
@@ -550,18 +551,30 @@ function setsFrom(prev, work) {
 
 // One exercise block of a new workout. A routine item brings its rep range, and with it
 // the weight to lift today (sug), worked out once at the start.
-function activeEx(it, done) {
+// `seen` holds the muscles already started in this workout: the first weighted exercise of a
+// muscle, and every barbell lift, is a heavy lift and gets warm-up sets when its weight is 20 kg or more.
+function activeEx(it, done, seen = new Set()) {
   const [lo, hi] = it.lo !== undefined || it.sets ? rangeOf(it) : [null, null];
-  return {
-    exId: it.exId, note: '', rest: db.restFor[it.exId] ?? db.settings.rest, lo, hi, sug: nextFor(it.exId, lo, hi, done),
-    sets: it.types ? it.types.map((t) => newSet(t)) : setsFrom(previousSets(done, it.exId), it.sets),
-  };
+  const sug = nextFor(it.exId, lo, hi, done);
+  const prev = previousSets(done, it.exId);
+  let sets = it.types ? it.types.map((t) => newSet(t)) : setsFrom(prev, it.sets);
+  const e = getEx(it.exId);
+  if (e.kind === 'wr') {
+    const heavy = e.equip === 'Barbell' || !seen.has(e.muscle);
+    seen.add(e.muscle);
+    const work = sug?.w ?? prev.filter((s) => isWork(s) && s.w).reduce((m, s) => Math.max(m, s.w), 0);
+    const wu = heavy ? warmups(work, stepFor(e.equip, unit()), { back: !!sug?.back, min: e.equip === 'Barbell' ? 20 : 0 }) : [];
+    if (wu.length) sets = [...wu.map((aim) => ({ ...newSet('w'), aim })), ...sets.filter((s) => s.type !== 'w')];
+  }
+  return { exId: it.exId, note: '', rest: db.restFor[it.exId] ?? db.settings.rest, lo, hi, sug, sets };
 }
+const musclesIn = (a) => new Set(a.exercises.map((ex) => getEx(ex.exId)).filter((e) => e.kind === 'wr').map((e) => e.muscle));
 
 function startWorkout({ name = 'Workout', items = [], routineId = null, routineIds = routineId ? [routineId] : [] } = {}) {
   if (db.active) { toast('Finish or discard the current workout first'); go({ view: 'active' }); return; }
   const done = doneWorkouts();
-  db.active = { id: uid(), name, start: Date.now(), routineId, routineIds, exercises: items.map((it) => activeEx(it, done)) };
+  const seen = new Set();
+  db.active = { id: uid(), name, start: Date.now(), routineId, routineIds, exercises: items.map((it) => activeEx(it, done, seen)) };
   save();
   unlockAudio();
   if (tab !== 'today') { stack = []; tab = 'today'; }
@@ -570,9 +583,8 @@ function startWorkout({ name = 'Workout', items = [], routineId = null, routineI
 
 function addToActive(ids) {
   const done = doneWorkouts();
-  for (const exId of ids) {
-    db.active.exercises.push({ exId, note: '', rest: db.restFor[exId] ?? db.settings.rest, lo: null, hi: null, sug: null, sets: setsFrom(previousSets(done, exId)) });
-  }
+  const seen = musclesIn(db.active);
+  for (const exId of ids) db.active.exercises.push(activeEx({ exId }, done, seen));
   save();
   rerender();
   setTimeout(() => document.querySelector('.ex:last-of-type')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -589,7 +601,8 @@ function addRoutineToActive(r) {
   const have = new Set(a.exercises.map((ex) => ex.exId));
   const from = a.exercises.length;
   const add = r.items.filter((it) => !have.has(it.exId));
-  a.exercises.push(...add.map((it) => activeEx(it, done)));
+  const seen = musclesIn(a);
+  a.exercises.push(...add.map((it) => activeEx(it, done, seen)));
   ids.push(r.id);
   a.routineId = a.routineId || r.id;
   if (auto) a.name = [...names, r.name].join(' + ');
@@ -620,6 +633,7 @@ const COLS = { wr: ['kg', 'Reps'], r: ['Reps'], t: ['Time'] };
 // What an empty field means for set j: the suggested weight on work sets, else last
 // time's numbers; reps from last time, else the bottom of the range.
 function hintFor(ex, s, p) {
+  if (s.aim) return { w: s.aim.w, up: false, r: s.aim.r, t: null };
   const sugW = ex.sug && s.type !== 'w' && s.type !== 'd' ? ex.sug.w : null;
   return { w: sugW ?? p?.w ?? null, up: sugW != null && ex.sug.up, r: p?.r ?? (s.type !== 'w' ? ex.lo : null) ?? null, t: p?.t ?? null };
 }
@@ -653,15 +667,20 @@ function setRow(ex, s, j, prev, kind, rec) {
 }
 
 // Today's target for an exercise: "↑ 95 kg" in the meta row; tapping it says why.
+const weeksOff = (days) => `${Math.round(days / 7)} week${Math.round(days / 7) === 1 ? '' : 's'}`;
 const sugWhy = (ex) => {
-  const u = unit();
-  return ex.sug.up ? `Going up to ${fmtW(ex.sug.w, u)} ${u}. You hit ${ex.hi} on every set last time.`
-    : `Staying at ${fmtW(ex.sug.w, u)} ${u}. Get ${ex.hi} on every set to go up.`;
+  const u = unit(), s = ex.sug, w = `${fmtW(s.w, u)} ${u}`;
+  const warm = ex.sets.filter((x) => x.aim).length;
+  const tail = warm ? ` ${warm} warm-up${warm === 1 ? '' : 's'} first.` : '';
+  if (s.back) return `Back after ${weeksOff(s.back.days)}: ${w}, ${Math.round(s.back.cut * 100)}% under the ${fmtW(s.back.to, u)} ${u} you did last. It climbs back over the next sessions.${tail}`;
+  if (s.climb) return `Climbing back to ${fmtW(s.climb.to, u)} ${u} after your break: ${w} today.${tail}`;
+  return (s.up ? `Going up to ${w}. You hit ${ex.hi} on every set last time.` : `Staying at ${w}. Get ${ex.hi} on every set to go up.`) + tail;
 };
 function sugNote(ex) {
   if (!ex.sug) return '';
-  const u = unit();
-  return `<button class="goal${ex.sug.up ? ' up' : ''}" data-sug aria-label="${esc(sugWhy(ex))}">${ex.sug.up ? '↑ ' : ''}${fmtW(ex.sug.w, u)} ${u}</button>`;
+  const u = unit(), s = ex.sug;
+  const mark = s.back ? `${weeksOff(s.back.days).replace(/ weeks?/, ' wk')} off · ↓ ` : s.up ? '↑ ' : '';
+  return `<button class="goal${s.up ? ' up' : ''}${s.back ? ' down' : ''}" data-sug aria-label="${esc(sugWhy(ex))}">${mark}${fmtW(s.w, u)} ${u}</button>`;
 }
 
 function exCard(ex, i, done) {
@@ -845,6 +864,7 @@ function toggleSet(ex, j, row) {
       return;
     }
     s.done = true;
+    s.at = Date.now();
     navigator.vibrate?.(12);
     if (ex.rest) startRest(ex.rest);
   } else s.done = false;
@@ -992,7 +1012,7 @@ async function finishWorkout() {
     id: a.id, name: a.name.trim() || 'Workout', start: a.start, end: Date.now(), routineId: a.routineId,
     ...(a.routineIds?.length > 1 ? { routineIds: a.routineIds } : {}),
     exercises: a.exercises
-      .map((ex) => ({ exId: ex.exId, note: ex.note.trim(), sets: ex.sets.filter((s) => s.done).map(({ type, w, r, t }) => ({ type, w, r, t })) }))
+      .map((ex) => ({ exId: ex.exId, note: ex.note.trim(), sets: ex.sets.filter((s) => s.done).map(({ type, w, r, t, at }) => ({ type, w, r, t, ...(at ? { at } : {}) })) }))
       .filter((ex) => ex.sets.length),
   };
   // What was planned for next time is kept with the workout, so the summary can show it.
@@ -1032,7 +1052,7 @@ function itemLine(it, done) {
   const [lo, hi] = rangeOf(it);
   const sug = nextFor(it.exId, lo, hi, done);
   const right = sug
-    ? `${sug.up ? icon('up-arrow', 'upc') : ''}<b>${fmtW(sug.w, unit())}</b><small>${unit()}</small>`
+    ? `${sug.up ? icon('up-arrow', 'upc') : sug.back ? '<i class="downc" aria-label="Lower after a break">↓</i>' : ''}<b>${fmtW(sug.w, unit())}</b><small>${unit()}</small>`
     : `<small>${lo ? 'new' : ''}</small>`;
   return `<button class="t-row" data-open="${it.exId}">
     ${thumb(e)}
@@ -1244,6 +1264,7 @@ VIEWS.summary = (v) => {
       <div><small>Volume</small><b>${volText(workoutVolume(wk))}</b></div>
       <div><small>Sets</small><b>${workoutSetCount(wk)}</b></div>
     </div>
+    ${hrCard(wk)}
     ${prs.length ? `<div class="card prs"><p class="prs-title">${icon('trophy')}${prs.length} personal record${prs.length > 1 ? 's' : ''}</p>
       ${prs.map((p) => `<div class="pr-row"><span>${esc(getEx(p.exId).name)}<small>${PR_LABEL[p.key]}</small></span><b>${prValue(p.key, p.value)}</b></div>`).join('')}</div>` : ''}
     ${nextTime(wk)}
@@ -1259,7 +1280,7 @@ function nextTime(wk) {
   const rows = wk.exercises.filter((ex) => wk.ranges[ex.exId]).map((ex) => {
     const [lo, hi] = wk.ranges[ex.exId];
     const e = getEx(ex.exId);
-    const s = suggest(ex.sets, lo, hi, stepFor(e.equip, u));
+    const s = nextFor(ex.exId, lo, hi, db.workouts.filter((w) => w.start <= wk.start), wk.end);
     if (!s) return '';
     const right = s.up
       ? `<b class="accent">${fmtW(s.last, u)} → ${fmtW(s.w, u)} ${u}</b>`
@@ -1343,6 +1364,7 @@ VIEWS.workoutDetail = (v) => {
         <div><small>Volume</small><b>${volText(workoutVolume(wk))}</b></div>
         <div><small>Records</small><b>${prs.length}</b></div>
       </div>
+      ${hrCard(wk)}
       ${wk.exercises.map((ex) => {
         const e = getEx(ex.exId);
         const mine = prs.filter((p) => p.exId === ex.exId);
@@ -1744,6 +1766,7 @@ VIEWS.profile = () => {
       <div class="set-line"><span>Units</span><div class="seg sm" data-unit>${['kg', 'lb'].map((u) => `<button data-u="${u}" class="${s.unit === u ? 'on' : ''}">${u}</button>`).join('')}</div></div>
       <label class="set-line"><span>Default rest</span><select data-defrest>${[0, 30, 60, 90, 120, 180, 240, 300].map((sec) => `<option value="${sec}"${sec === s.rest ? ' selected' : ''}>${sec ? fmtClock(sec) : 'Off'}</option>`).join('')}</select></label>
     </div>
+    ${hrSettings()}
     <h2 class="month">Backup</h2>
     <div class="card settings">
       <p class="set-note">Your workouts live on this phone only. Export a backup now and then, and after big sessions.</p>
@@ -1966,6 +1989,101 @@ $('#view').addEventListener('click', async (e) => {
   }
 });
 
+// ---------- heart rate ----------
+// AirPods measure it while AirPulse runs. The "Lift heart rate" Shortcut posts the last hours of
+// Apple Health heart rate to paul-hub (run from the Get heart rate button, or by an automation
+// when the AirPods disconnect). Lift asks paul-hub for the samples inside each workout and keeps
+// average, peak, calories, the line and a number per exercise with the workout.
+const HR_SHORTCUT = 'Lift heart rate';
+const hrOn = () => !!(db.settings.hr?.on && db.settings.hub);
+let hrWaiting = 0;
+async function fetchHr(wk) {
+  try {
+    const res = await fetch(`${HUB}/api/lift/${db.settings.hub}/hr?from=${wk.start}&to=${wk.end}`, { cache: 'no-store' });
+    if (!res.ok) return false;
+    const { samples } = await res.json();
+    const st = hrStats(samples || [], wk.start, wk.end, { kg: db.settings.hr?.kg, age: db.settings.hr?.age });
+    if (!st) return false;
+    wk.hr = { ...st, ex: hrPerExercise(samples, wk.exercises) };
+    return true;
+  } catch { return false; }
+}
+// Workouts from the last two days still without heart rate.
+let hrBusy = false;
+async function fillHr() {
+  if (hrBusy || !hrOn() || !navigator.onLine) return 0;
+  hrBusy = true;
+  let got = 0;
+  for (const w of db.workouts.filter((x) => !x.hr && Date.now() - x.end < 2 * 86400000)) if (await fetchHr(w)) got++;
+  hrBusy = false;
+  if (got) { save(); if (['summary', 'workoutDetail'].includes(cur().view)) rerender(); }
+  return got;
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  const asked = hrWaiting && Date.now() - hrWaiting < 10 * 60000;
+  hrWaiting = 0;
+  const got = await fillHr();
+  if (asked && !got) toast('No heart rate for this workout yet');
+});
+
+function hrLine(line) {
+  if (line.length < 2) return '';
+  const xs = line.map((p) => p[0]), ys = line.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), lo = Math.min(...ys) - 5, hi = Math.max(...ys) + 5;
+  const pts = line.map(([x, y]) => `${(((x - x0) / (x1 - x0 || 1)) * 300).toFixed(1)},${(56 - ((y - lo) / (hi - lo)) * 52).toFixed(1)}`).join(' ');
+  return `<svg class="hr-line" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}"/></svg>`;
+}
+function hrCard(wk) {
+  const h = wk.hr;
+  if (!h) {
+    if (!hrOn() || Date.now() - wk.end > 7 * 86400000) return '';
+    return `<div class="card hr"><div class="hr-top"><p class="nt-title">Heart rate</p><button class="btn soft sm" data-hrget>Get heart rate</button></div></div>`;
+  }
+  const rows = wk.exercises.filter((ex) => h.ex?.[ex.exId]).map((ex) => `<div class="nt-row"><span>${esc(getEx(ex.exId).name)}</span><span><b>${h.ex[ex.exId].avg}</b> · peak ${h.ex[ex.exId].max}</span></div>`).join('');
+  return `<div class="card hr">
+    <p class="nt-title">Heart rate</p>
+    <div class="hr-nums"><span><b>${h.avg}</b><small>avg bpm</small></span><span><b>${h.max}</b><small>peak</small></span>${h.kcal != null ? `<span><b>≈ ${h.kcal}</b><small>kcal</small></span>` : ''}</div>
+    ${hrLine(h.line || [])}
+    ${rows}
+  </div>`;
+}
+$('#view').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-hrget]')) return;
+  hrWaiting = Date.now();
+  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(HR_SHORTCUT);
+});
+
+function hrSettings() {
+  const h = db.settings.hr || {};
+  return `<h2 class="month">Heart rate</h2>
+    <div class="card settings">
+      <div class="set-line"><span>From AirPods</span><div class="seg sm" data-hron>${['Off', 'On'].map((x) => `<button data-v="${x}" class="${(x === 'On') === !!h.on ? 'on' : ''}">${x}</button>`).join('')}</div></div>
+      ${h.on ? `<label class="set-line"><span>Weight (kg)</span><input class="set-in" data-hrkg inputmode="decimal" maxlength="5" value="${h.kg ?? ''}" placeholder="—"></label>
+      <label class="set-line"><span>Age</span><input class="set-in" data-hrage inputmode="numeric" maxlength="3" value="${h.age ?? ''}" placeholder="—"></label>
+      <p class="set-note dim">${db.settings.hub ? `Weight and age give the calories. Heart rate comes in through the “${HR_SHORTCUT}” Shortcut.` : 'Connect paul-hub above first.'}</p>` : ''}
+    </div>`;
+}
+$('#view').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-hron] button');
+  if (!b || cur().view !== 'profile') return;
+  db.settings.hr = { ...db.settings.hr, on: b.dataset.v === 'On' };
+  save();
+  rerender();
+  fillHr();
+});
+$('#view').addEventListener('change', (e) => {
+  const t = e.target;
+  if (!t.matches('[data-hrkg], [data-hrage]')) return;
+  const n = parseNum(t.value);
+  const key = t.matches('[data-hrkg]') ? 'kg' : 'age';
+  const ok = n != null && (key === 'kg' ? n >= 30 && n <= 250 : n >= 10 && n <= 100);
+  db.settings.hr = { ...db.settings.hr, [key]: ok ? (key === 'age' ? Math.round(n) : n) : null };
+  save();
+  toast(ok ? 'Saved' : key === 'kg' ? 'Weight in kg, 30 to 250' : 'Age, 10 to 100');
+  if (!ok) t.value = '';
+});
+
 // Fetch the photos of every routine exercise once, so they are there without signal.
 function warmPhotos() {
   if (!navigator.onLine) return;
@@ -2019,4 +2137,5 @@ if (db.active) go({ view: 'active' });
 // Send on open when something is waiting or the hub has not heard for a while, once names are loaded.
 loadExdb().then(() => { if (db.settings.hub && !db.active && (db.sync?.dirty || Date.now() - (db.sync?.at || 0) > 6 * 3600e3)) syncSoon(800); });
 warmPhotos();
+fillHr();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

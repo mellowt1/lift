@@ -200,6 +200,72 @@ export function suggest(prev, lo, hi, step) {
   return { w: Math.round((up ? top + step : top) * 1000) / 1000, up, last: top };
 }
 
+// ---------- Back after a break ----------
+// A gap of two weeks or more on one exercise drops its weight: 2–3 weeks −10 %, 3–6 weeks −20 %,
+// longer −30 %. The sessions after that climb back, each one closing about half of what is left.
+export const BREAK_DAYS = 14;
+export function breakCut(days) {
+  if (days < BREAK_DAYS) return 0;
+  if (days < 21) return 0.1;
+  if (days < 42) return 0.2;
+  return 0.3;
+}
+const r3 = (n) => Math.round(n * 1000) / 1000;
+const topOf = (sets) => sets.filter((s) => counts(s) && s.w).reduce((m, s) => Math.max(m, s.w), 0);
+
+// Sessions of one exercise, oldest first: [{ start, sets }].
+export function sessionsOf(workouts, exId) {
+  return workouts
+    .filter((w) => w.exercises.some((e) => e.exId === exId))
+    .sort((a, b) => a.start - b.start)
+    .map((w) => ({ start: w.start, sets: w.exercises.filter((e) => e.exId === exId).flatMap((e) => e.sets) }));
+}
+
+// Weight for the next session of one exercise. Without a rep range there is only a number
+// when a break changes it; the plain case keeps last time's weights per set.
+export function plan(sessions, lo, hi, step, now = Date.now()) {
+  if (!sessions.length) return null;
+  const last = sessions[sessions.length - 1];
+  const top = topOf(last.sets);
+  if (!top) return null;
+  const base = hi ? suggest(last.sets, lo, hi, step) : null;
+  const days = Math.floor((now - last.start) / 86400000);
+  const cut = breakCut(days);
+  if (cut) {
+    const w = Math.max(step, Math.floor((top * (1 - cut)) / step + 1e-9) * step);
+    return w < top ? { w: r3(w), up: false, last: top, back: { days, cut, to: top } } : base;
+  }
+  // Climbing back: a break before one of the last four sessions, still under the weight from before it,
+  // and last time every set reached the bottom of the range.
+  for (let k = sessions.length - 1; k >= 1 && sessions.length - k <= 4; k--) {
+    if ((sessions[k].start - sessions[k - 1].start) / 86400000 < BREAK_DAYS) continue;
+    const to = topOf(sessions[k - 1].sets);
+    if (!to || top >= to - 1e-9) break;
+    const ok = !lo || last.sets.filter((s) => counts(s) && s.w).every((s) => (s.r || 0) >= lo);
+    if (!ok) break;
+    const w = Math.min(to, top + Math.ceil((to - top) / 2 / step - 1e-9) * step);
+    if (w > (base?.w ?? top) + 1e-9) return { w: r3(w), up: true, last: top, climb: { to } };
+    break;
+  }
+  return base;
+}
+
+// Warm-up sets before a heavy work weight: 50 % × 10 and 75 % × 5, or after a break
+// 40 % × 10, 60 % × 6 and 80 % × 3. Rounded to the weight step, never under `min`
+// (the empty bar), and a weight that repeats or reaches the work weight is left out.
+export const HEAVY_KG = 20;
+export function warmups(work, step, { back = false, min = 0 } = {}) {
+  if (!work || work < HEAVY_KG) return [];
+  const steps = back ? [[0.4, 10], [0.6, 6], [0.8, 3]] : [[0.5, 10], [0.75, 5]];
+  const out = [];
+  for (const [p, r] of steps) {
+    const w = r3(Math.max(min, step, Math.round((work * p) / step) * step));
+    if (w >= work - 1e-9 || out.some((o) => o.w === w)) continue;
+    out.push({ w, r });
+  }
+  return out;
+}
+
 // Range for the reps someone usually does: the narrowest offered range around the
 // median set, ties to the one whose top is nearest. One odd set (a 3-rep grinder
 // or a 24-rep burnout) does not stretch it. Past 20 reps: the five below the median.
@@ -420,4 +486,48 @@ export function daysFromHistory(workouts, now = Date.now()) {
   const weeks = [0, 1, 2, 3, 4, 5, 6].map(() => new Set());
   for (const w of workouts) if (w.start >= since) weeks[dayIndex(w.start)].add(weekStart(w.start));
   return weeks.map((s) => s.size >= 4);
+}
+
+// ---------- Heart rate ----------
+// Samples are [ms, bpm] from Apple Health (AirPods, via the "Lift heart rate" Shortcut and paul-hub).
+// Each sample counts for the time until the next one, at most two minutes, so a gap in the
+// readings neither stretches nor drops the numbers.
+const HR_GAP = 120000;
+// Calories per minute from heart rate (Keytel et al. 2005, the men's formula), kg and age needed.
+export function kcalPerMin(bpm, kg, age) {
+  return Math.max(0, (-55.0969 + 0.6309 * bpm + 0.1988 * kg + 0.2017 * age) / 4.184);
+}
+
+export function hrStats(samples, start, end, { kg = 0, age = 0 } = {}) {
+  const pts = samples.filter(([t, b]) => t >= start && t <= end && b > 0).sort((a, b) => a[0] - b[0]);
+  if (pts.length < 3) return null;
+  let sum = 0, span = 0, kcal = 0, max = 0;
+  pts.forEach(([t, b], i) => {
+    const dt = Math.min(HR_GAP, (pts[i + 1]?.[0] ?? Math.min(end, t + 5000)) - t);
+    sum += b * dt; span += dt; max = Math.max(max, b);
+    if (kg && age) kcal += kcalPerMin(b, kg, age) * (dt / 60000);
+  });
+  if (!span) return null;
+  // The line: one point a minute (at most 80), each the average of its slice of the workout.
+  const n = Math.min(80, Math.max(2, Math.round((end - start) / 60000))), size = (end - start) / n;
+  const line = [];
+  for (let k = 0; k < n; k++) {
+    const a = start + k * size, z = a + size;
+    const in_ = pts.filter(([t]) => t >= a && t < z);
+    if (in_.length) line.push([Math.round((a + size / 2 - start) / 1000), Math.round(in_.reduce((s, p) => s + p[1], 0) / in_.length)]);
+  }
+  return { avg: Math.round(sum / span), max, kcal: kg && age ? Math.round(kcal) : null, line };
+}
+
+// Average and peak per exercise, from the minute before its first ticked set to its last tick.
+export function hrPerExercise(samples, exercises) {
+  const out = {};
+  for (const ex of exercises) {
+    const at = ex.sets.map((s) => s.at).filter(Boolean);
+    if (!at.length) continue;
+    const pts = samples.filter(([t]) => t >= Math.min(...at) - 60000 && t <= Math.max(...at));
+    if (!pts.length) continue;
+    out[ex.exId] = { avg: Math.round(pts.reduce((s, p) => s + p[1], 0) / pts.length), max: Math.max(...pts.map((p) => p[1])) };
+  }
+  return out;
 }

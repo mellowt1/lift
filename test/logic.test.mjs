@@ -176,3 +176,78 @@ test('Hevy names: plurals match, different equipment does not', () => {
   assert.equal(matchExercise('Cable Fly Crossovers', lib).name, 'Cable Fly Crossover');
   assert.equal(matchExercise('Scapular Pull Ups', lib, { exactOnly: true }).name, 'Scapular Pull-Up');
 });
+
+import { plan, sessionsOf, breakCut, warmups } from '../app/logic.js';
+
+test('break cut steps: none under 2 weeks, then 10, 20, 30 %', () => {
+  assert.equal(breakCut(13), 0);
+  assert.equal(breakCut(14), 0.1);
+  assert.equal(breakCut(21), 0.2);
+  assert.equal(breakCut(41), 0.2);
+  assert.equal(breakCut(42), 0.3);
+});
+
+test('plan: no break behaves like suggest', () => {
+  const now = 100 * DAY;
+  const s = sessionsOf([wk('a', now - 5 * DAY, 'x', [S(100, 12), S(100, 12)])], 'x');
+  assert.deepEqual(plan(s, 8, 12, 2.5, now), { w: 102.5, up: true, last: 100 });
+  assert.equal(plan(s, null, null, 2.5, now), null);
+});
+
+test('plan: 3 weeks off drops 20 % from what was lifted, rounded down to the step', () => {
+  const now = 100 * DAY;
+  const s = sessionsOf([wk('a', now - 22 * DAY, 'x', [S(105, 12), S(105, 12)])], 'x');
+  const p = plan(s, 8, 12, 2.5, now);
+  assert.equal(p.w, 82.5);
+  assert.equal(p.up, false);
+  assert.deepEqual(p.back, { days: 22, cut: 0.2, to: 105 });
+  assert.equal(plan(s, null, null, 2.5, now).w, 82.5, 'no range still drops after a break');
+});
+
+test('plan: climbs back half the gap per session, never past the old weight', () => {
+  const now = 100 * DAY;
+  const hist = [wk('a', 50 * DAY, 'x', [S(100, 10)]), wk('b', 80 * DAY, 'x', [S(80, 10)])];
+  assert.deepEqual(plan(sessionsOf(hist, 'x'), 8, 12, 2.5, hist.at(-1).start + 3 * DAY), { w: 90, up: true, last: 80, climb: { to: 100 } });
+  hist.push(wk('c', 84 * DAY, 'x', [S(90, 10)]));
+  assert.equal(plan(sessionsOf(hist, 'x'), 8, 12, 2.5, hist.at(-1).start + 3 * DAY).w, 95);
+  hist.push(wk('d', 88 * DAY, 'x', [S(97.5, 9)]));
+  assert.equal(plan(sessionsOf(hist, 'x'), 8, 12, 2.5, hist.at(-1).start + 3 * DAY).w, 100);
+  hist.push(wk('e', 92 * DAY, 'x', [S(100, 9)]));
+  assert.deepEqual(plan(sessionsOf(hist, 'x'), 8, 12, 2.5, hist.at(-1).start + 3 * DAY), { w: 100, up: false, last: 100 }, 'back at the old weight: normal again');
+});
+
+test('plan: no climb when last time missed the bottom of the range', () => {
+  const now = 100 * DAY;
+  const hist = [wk('a', 50 * DAY, 'x', [S(100, 10)]), wk('b', 80 * DAY, 'x', [S(80, 6)])];
+  assert.deepEqual(plan(sessionsOf(hist, 'x'), 8, 12, 2.5, hist.at(-1).start + 3 * DAY), { w: 80, up: false, last: 80 });
+});
+
+test('warm-ups: two normally, three after a break, none under 20 kg, bar minimum', () => {
+  assert.deepEqual(warmups(100, 2.5), [{ w: 50, r: 10 }, { w: 75, r: 5 }]);
+  assert.deepEqual(warmups(100, 2.5, { back: true }), [{ w: 40, r: 10 }, { w: 60, r: 6 }, { w: 80, r: 3 }]);
+  assert.deepEqual(warmups(18, 2), []);
+  assert.deepEqual(warmups(30, 2.5, { min: 20 }), [{ w: 20, r: 10 }, { w: 22.5, r: 5 }]);
+  assert.deepEqual(warmups(22, 2, { min: 20 }), [{ w: 20, r: 10 }], 'the bar once, no repeats');
+});
+
+import { hrStats, hrPerExercise, kcalPerMin } from '../app/logic.js';
+
+test('heart rate: time-weighted average, peak, calories, gaps capped', () => {
+  const t0 = 1_000_000;
+  const s = [[t0, 100], [t0 + 60000, 140], [t0 + 120000, 120], [t0 + 900000, 100]];
+  const h = hrStats(s, t0, t0 + 905000, { kg: 77, age: 27 });
+  // 100 for 60 s, 140 for 60 s, 120 for 120 s (capped), 100 for 5 s
+  assert.equal(h.avg, Math.round((100 * 60 + 140 * 60 + 120 * 120 + 100 * 5) / 245));
+  assert.equal(h.max, 140);
+  const k = kcalPerMin(100, 77, 27) * 1 + kcalPerMin(140, 77, 27) + kcalPerMin(120, 77, 27) * 2 + kcalPerMin(100, 77, 27) * 5 / 60;
+  assert.equal(h.kcal, Math.round(k));
+  assert.equal(hrStats(s, t0, t0 + 905000).kcal, null, 'no weight or age: no calories');
+  assert.equal(hrStats(s.slice(0, 2), t0, t0 + 1e6), null, 'too few samples');
+  assert.ok(h.line.length >= 3 && h.line.length <= 15 && h.line.every(([sec, b]) => sec >= 0 && b >= 100));
+});
+
+test('heart rate per exercise uses the ticks', () => {
+  const s = [[0, 90], [50000, 130], [100000, 150], [400000, 100]];
+  const ex = [{ exId: 'a', sets: [{ at: 60000 }, { at: 100000 }] }, { exId: 'b', sets: [{}] }];
+  assert.deepEqual(hrPerExercise(s, ex), { a: { avg: Math.round((90 + 130 + 150) / 3), max: 150 } });
+});
