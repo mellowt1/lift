@@ -498,14 +498,33 @@ export function kcalPerMin(bpm, kg, age) {
   return Math.max(0, (-55.0969 + 0.6309 * bpm + 0.1988 * kg + 0.2017 * age) / 4.184);
 }
 
-export function hrStats(samples, start, end, { kg = 0, age = 0 } = {}) {
+// Lifting: heart rate runs ahead of the energy used (straining, rests with a high pulse), so the
+// cardio formula roughly doubles it. Here the heart rate only picks the effort between standing
+// around (2 MET, at 40 % of top heart rate or less) and hard lifting (6 MET, at 85 % or more).
+export function liftKcalPerMin(bpm, kg, age) {
+  const p = bpm / (208 - 0.7 * age);
+  const met = 2 + Math.min(1, Math.max(0, (p - 0.4) / 0.45)) * 4;
+  return (met * 3.5 * kg) / 200;
+}
+// When the cardio exercises ran: each ticked timed set, from its tick back over its time.
+export function cardioSpans(exercises, isCardio) {
+  const out = [];
+  for (const ex of exercises) {
+    if (!isCardio(ex.exId)) continue;
+    for (const s of ex.sets) if (s.at && s.t) out.push([s.at - s.t * 1000, s.at]);
+  }
+  return out;
+}
+
+export const HR_V = 2; // 2: lifting calories, the cardio formula only inside cardio sets
+export function hrStats(samples, start, end, { kg = 0, age = 0, cardio = [] } = {}) {
   const pts = samples.filter(([t, b]) => t >= start && t <= end && b > 0).sort((a, b) => a[0] - b[0]);
   if (pts.length < 3) return null;
   let sum = 0, span = 0, kcal = 0, max = 0;
   pts.forEach(([t, b], i) => {
     const dt = Math.min(HR_GAP, (pts[i + 1]?.[0] ?? Math.min(end, t + 5000)) - t);
     sum += b * dt; span += dt; max = Math.max(max, b);
-    if (kg && age) kcal += kcalPerMin(b, kg, age) * (dt / 60000);
+    if (kg && age) kcal += (cardio.some(([a, z]) => t >= a && t <= z) ? kcalPerMin : liftKcalPerMin)(b, kg, age) * (dt / 60000);
   });
   if (!span) return null;
   // The line: one point a minute (at most 80), each the average of its slice of the workout.
@@ -516,7 +535,7 @@ export function hrStats(samples, start, end, { kg = 0, age = 0 } = {}) {
     const in_ = pts.filter(([t]) => t >= a && t < z);
     if (in_.length) line.push([Math.round((a + size / 2 - start) / 1000), Math.round(in_.reduce((s, p) => s + p[1], 0) / in_.length)]);
   }
-  return { avg: Math.round(sum / span), max, kcal: kg && age ? Math.round(kcal) : null, line };
+  return { v: HR_V, avg: Math.round(sum / span), max, kcal: kg && age ? Math.round(kcal) : null, line };
 }
 
 // Average and peak per exercise, from the minute before its first ticked set to its last tick.

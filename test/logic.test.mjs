@@ -230,7 +230,7 @@ test('warm-ups: two normally, three after a break, none under 20 kg, bar minimum
   assert.deepEqual(warmups(22, 2, { min: 20 }), [{ w: 20, r: 10 }], 'the bar once, no repeats');
 });
 
-import { hrStats, hrPerExercise, kcalPerMin } from '../app/logic.js';
+import { hrStats, hrPerExercise, kcalPerMin, liftKcalPerMin, cardioSpans } from '../app/logic.js';
 
 test('heart rate: time-weighted average, peak, calories, gaps capped', () => {
   const t0 = 1_000_000;
@@ -239,8 +239,15 @@ test('heart rate: time-weighted average, peak, calories, gaps capped', () => {
   // 100 for 60 s, 140 for 60 s, 120 for 120 s (capped), 100 for 5 s
   assert.equal(h.avg, Math.round((100 * 60 + 140 * 60 + 120 * 120 + 100 * 5) / 245));
   assert.equal(h.max, 140);
-  const k = kcalPerMin(100, 77, 27) * 1 + kcalPerMin(140, 77, 27) + kcalPerMin(120, 77, 27) * 2 + kcalPerMin(100, 77, 27) * 5 / 60;
+  const k = liftKcalPerMin(100, 77, 27) * 1 + liftKcalPerMin(140, 77, 27) + liftKcalPerMin(120, 77, 27) * 2 + liftKcalPerMin(100, 77, 27) * 5 / 60;
   assert.equal(h.kcal, Math.round(k));
+  assert.equal(h.v, 2);
+  // The second minute was a treadmill set: that minute counts by the cardio formula.
+  const spans = cardioSpans([{ exId: 'treadmill', sets: [{ t: 60, at: t0 + 119000 }, { t: 60 }] }, { exId: 'bench', sets: [{ t: 60, at: t0 + 50000 }] }], (id) => id === 'treadmill');
+  assert.deepEqual(spans, [[t0 + 59000, t0 + 119000]]);
+  const c = hrStats(s, t0, t0 + 905000, { kg: 77, age: 27, cardio: spans });
+  assert.equal(c.kcal, Math.round(k - liftKcalPerMin(140, 77, 27) + kcalPerMin(140, 77, 27)));
+  assert.ok(liftKcalPerMin(60, 77, 27) > 2.6 && liftKcalPerMin(200, 77, 27) < 8.1, 'between 2 and 6 MET');
   assert.equal(hrStats(s, t0, t0 + 905000).kcal, null, 'no weight or age: no calories');
   assert.equal(hrStats(s.slice(0, 2), t0, t0 + 1e6), null, 'too few samples');
   assert.ok(h.line.length >= 3 && h.line.length <= 15 && h.line.every(([sec, b]) => sec >= 0 && b >= 100));

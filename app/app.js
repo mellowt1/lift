@@ -2,7 +2,7 @@ import { BUILT_IN, MUSCLES, GROUPS, CHIPS, STAPLES, EQUIPMENT, HEVY_ALIAS, HOWTO
 import {
   uid, toUnit, fromUnit, fmtNum, fmtW, fmtBig, fmtClock, fmtDuration, parseTime, parseNum, e1rm, isWork,
   workoutVolume, workoutSetCount, bests, prsFor, PR_LABEL, previousSets, weeklyCounts, streakWeeks, progression, weekStart,
-  RANGES, DEFAULT_RANGE, stepFor, suggest, plan, sessionsOf, warmups, hrStats, hrPerExercise, muscleWeek, nextRoutine, nextGymDay, dayIndex, startOfDay,
+  RANGES, DEFAULT_RANGE, stepFor, suggest, plan, sessionsOf, warmups, hrStats, hrPerExercise, cardioSpans, HR_V, muscleWeek, nextRoutine, nextGymDay, dayIndex, startOfDay,
   hevyWorkouts, kindFromSets, matchExercise, routinesFromHistory, daysFromHistory,
 } from './logic.js';
 
@@ -2006,7 +2006,8 @@ async function fetchHr(wk) {
     const res = await fetch(`${HUB}/api/lift/${db.settings.hub}/hr?from=${wk.start}&to=${wk.end}`, { cache: 'no-store' });
     if (!res.ok) return false;
     const { samples } = await res.json();
-    const st = hrStats(samples || [], wk.start, wk.end, { kg: db.settings.hr?.kg, age: db.settings.hr?.age });
+    const cardio = cardioSpans(wk.exercises, (id) => getEx(id).muscle === 'Cardio');
+    const st = hrStats(samples || [], wk.start, wk.end, { kg: db.settings.hr?.kg, age: db.settings.hr?.age, cardio });
     if (!st) return false;
     wk.hr = { ...st, ex: hrPerExercise(samples, wk.exercises) };
     return true;
@@ -2018,7 +2019,8 @@ async function fillHr() {
   if (hrBusy || !hrOn() || !navigator.onLine) return 0;
   hrBusy = true;
   let got = 0;
-  for (const w of db.workouts.filter((x) => !x.hr && Date.now() - x.end < 2 * 86400000)) if (await fetchHr(w)) got++;
+  // Also the ones counted the old way (calories by the cardio formula all through).
+  for (const w of db.workouts.filter((x) => (x.hr ? x.hr.v !== HR_V : Date.now() - x.end < 2 * 86400000))) if (await fetchHr(w)) got++;
   hrBusy = false;
   if (got) { save(); if (['summary', 'workoutDetail'].includes(cur().view)) rerender(); }
   return got;
