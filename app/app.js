@@ -579,6 +579,8 @@ function startWorkout({ name = 'Workout', items = [], routineId = null, routineI
   unlockAudio();
   if (tab !== 'today') { stack = []; tab = 'today'; }
   go({ view: 'active' });
+  // AirPulse only measures while a workout runs: the "Lift start" Shortcut starts it.
+  if (hrOn()) location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(HR_START_SHORTCUT);
 }
 
 function addToActive(ids) {
@@ -1990,11 +1992,13 @@ $('#view').addEventListener('click', async (e) => {
 });
 
 // ---------- heart rate ----------
-// AirPods measure it while AirPulse runs. The "Lift heart rate" Shortcut posts the last hours of
+// AirPods measure it while AirPulse runs; starting a workout runs the "Lift start" Shortcut, which
+// starts AirPulse (no start on every AirPods connect). The "Lift heart rate" Shortcut posts the last hours of
 // Apple Health heart rate to paul-hub (run from the Get heart rate button, or by an automation
 // when the AirPods disconnect). Lift asks paul-hub for the samples inside each workout and keeps
 // average, peak, calories, the line and a number per exercise with the workout.
 const HR_SHORTCUT = 'Lift heart rate';
+const HR_START_SHORTCUT = 'Lift start';
 const hrOn = () => !!(db.settings.hr?.on && db.settings.hub);
 let hrWaiting = 0;
 async function fetchHr(wk) {
@@ -2061,7 +2065,7 @@ function hrSettings() {
       <div class="set-line"><span>From AirPods</span><div class="seg sm" data-hron>${['Off', 'On'].map((x) => `<button data-v="${x}" class="${(x === 'On') === !!h.on ? 'on' : ''}">${x}</button>`).join('')}</div></div>
       ${h.on ? `<label class="set-line"><span>Weight (kg)</span><input class="set-in" data-hrkg inputmode="decimal" maxlength="5" value="${h.kg ?? ''}" placeholder="—"></label>
       <label class="set-line"><span>Age</span><input class="set-in" data-hrage inputmode="numeric" maxlength="3" value="${h.age ?? ''}" placeholder="—"></label>
-      <p class="set-note dim">${db.settings.hub ? `Weight and age give the calories. Heart rate comes in through the “${HR_SHORTCUT}” Shortcut.` : 'Connect paul-hub above first.'}</p>` : ''}
+      <p class="set-note dim">${db.settings.hub ? `Weight and age give the calories. Starting a workout runs the “${HR_START_SHORTCUT}” Shortcut; heart rate comes in through “${HR_SHORTCUT}”.` : 'Connect paul-hub above first.'}</p>` : ''}
     </div>`;
 }
 $('#view').addEventListener('click', (e) => {
