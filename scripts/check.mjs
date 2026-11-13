@@ -57,6 +57,7 @@ const ctxOpts = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, c
 const errors = [];
 const watch = (page) => {
   page.on('pageerror', (e) => errors.push(e.message));
+  page.on('response', (r) => { if (r.status() === 404 && process.env.DEBUG) console.log('404', r.url()); });
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.g|jsdelivr|ERR_/.test(m.text())) errors.push(m.text()); });
 };
 
@@ -100,8 +101,19 @@ const seed = {
 await page.addInitScript((s) => { if (!localStorage.getItem('lift.v1')) localStorage.setItem('lift.v1', s); }, JSON.stringify(seed));
 // paul-hub stand-in: keep what Lift sends.
 const sent = [];
+await page.route('https://paul-hub.paul-o-a04.workers.dev/api/lessons/**', (route) => { sent.push({ url: route.request().url(), body: JSON.parse(route.request().postData() || '{}') }); return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '{}' }); });
 await page.route('https://paul-hub.paul-o-a04.workers.dev/api/lift/**', async (route) => {
   sent.push({ url: route.request().url(), body: JSON.parse(route.request().postData() || '{}') });
+  if (route.request().url().endsWith('/ask') && JSON.parse(route.request().postData()).question.includes('home')) {
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({
+      answer: 'Twenty minutes, no kit.', picks: [],
+      routine: { name: 'Home abs', items: [
+        { name: 'Dead Bug', muscle: 'Core', equip: 'Bodyweight', sets: 3, lo: 10, hi: 12 },
+        { name: 'Plank', muscle: 'Core', equip: 'Bodyweight', sets: 3, seconds: 40 },
+        { name: 'Hollow Body Hold', muscle: 'Core', equip: 'Bodyweight', sets: 3, seconds: 30 },
+      ] },
+    }) });
+  }
   if (route.request().url().endsWith('/ask')) {
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({
       answer: 'Your hamstrings get no direct work. Add one hinge and one curl.',
@@ -417,6 +429,38 @@ await page.waitForSelector('[data-toroutine]');
 ok(true, 'an answer opens the exercise page, with Add to a routine');
 await page.goBack();
 await page.goBack();
+
+
+// Ask for a home routine: it comes back as an extra, outside the rotation
+await page.click('[data-tab="routines"]');
+await page.click('.pad > [data-find]');
+await page.fill('[data-askq]', 'ab routine at home');
+await page.click('[data-askgo]');
+await page.waitForSelector('.x-claude');
+const askedHome = sent.filter((x) => x.url.endsWith('/ask')).pop();
+ok(askedHome.body.more.includes('Dead Bug') && !askedHome.body.more.includes('Plank'), 'Ask sends no-gym names Lift has only in More');
+ok((await page.textContent('.x-claude')).includes('3 × 40 s') && (await page.textContent('.x-claude')).includes('new to Lift'), 'routine card: holds in seconds, a new exercise marked');
+await page.screenshot({ path: out + '16-ask-routine.png' });
+await page.click('[data-xkeep]');
+const ex = await page.evaluate(() => JSON.parse(localStorage.getItem('lift.v1')));
+const home = ex.extras[0];
+ok(ex.extras.length === 1 && ex.routines.length === 3 && home.items.length === 3 && home.items[1].exId === 'plank' && home.items[1].target === '40 s' && home.items[0].target === '10–12 reps'
+  && ex.custom.some((c) => c.name === 'Hollow Body Hold' && c.kind === 't'), 'Save to extras: three items, rotation untouched, Hollow Body Hold made');
+await page.click('[data-xkeep]').catch(() => {});
+ok((await page.evaluate(() => JSON.parse(localStorage.getItem('lift.v1')).extras.length)) === 1, 'saved once');
+await page.goBack();
+await page.waitForSelector('[data-xid]');
+await page.screenshot({ path: out + '17-extras.png', fullPage: true });
+await page.click('[data-xid] [data-xstart]');
+await page.waitForSelector('.ex-meta');
+const act = await page.evaluate(() => JSON.parse(localStorage.getItem('lift.v1')).active);
+ok(act.name === 'Home abs' && act.extraId === home.id && !act.routineId, 'Start runs the extra with no routine');
+ok((await page.locator('.ex-meta', { hasText: '× 40 s' }).count()) >= 1, 'workout shows the hold time');
+await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('lift.v1')); d.active = null; localStorage.setItem('lift.v1', JSON.stringify(d)); });
+await page.reload();
+await page.waitForSelector('.next-name');
+ok((await page.textContent('.next-name')) === 'Push', 'rotation still has Push next (the extra did not move it)');
+if (process.env.DEBUG) console.log(JSON.stringify(home), ex.routines.length, JSON.stringify(ex.custom));
 
 await page.click('[data-tab="profile"]');
 await page.waitForSelector('[data-bars] svg');

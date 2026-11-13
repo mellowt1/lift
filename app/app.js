@@ -11,7 +11,10 @@ import {
 // The key stays lift.v1 so Lift 1 data carries over; Lift 2 only adds fields.
 const KEY = 'lift.v1';
 const EMPTY = () => ({
-  custom: [], routines: [], workouts: [], active: null, restFor: {}, settings: { unit: 'kg', rest: 90 }, lastBackup: null,
+  custom: [], routines: [], workouts: [], active: null,
+  // Routines outside the rotation (Paul, 2026-11-13): Claude's home abs and the like. Starting one
+  // never moves the rotation, never counts as a gym day and never ticks the to-do's gym task.
+  extras: [], restFor: {}, settings: { unit: 'kg', rest: 90 }, lastBackup: null,
   // Gym days Monday-first, and a routine picked by hand to go next (cleared when one is finished).
   plan: { days: [true, false, true, false, true, false, false], pick: null },
   sync: {}, // paul-hub: { at, dirty, error }
@@ -95,6 +98,11 @@ const doneWorkouts = () => [...db.workouts].sort((a, b) => b.start - a.start);
 // Rep range of a routine item; Lift 1 routines had none, so weight × reps gets 8–12.
 const rangeOf = (it) => (kindOf(it.exId) === 'wr' ? [it.lo ?? DEFAULT_RANGE[0], it.hi ?? DEFAULT_RANGE[1]] : [null, null]);
 const rangeText = (lo, hi) => (lo ? `${lo}–${hi}` : '');
+// Reps or time for an item without a rep range (an extra's "15 reps", "40 s").
+const targetText = (it) => (it.seconds ? `${it.seconds} s` : it.lo ? `${it.lo === it.hi ? it.lo : `${it.lo}–${it.hi}`} reps` : '');
+const itemSets = (it, lo, hi) => (lo ? `${it.sets} × ${rangeText(lo, hi)}` : it.target ? `${it.sets} × ${it.target}` : `${it.sets} set${it.sets === 1 ? '' : 's'}`);
+// Workouts that count for the rotation and gym days: extras do not.
+const gymWorkouts = () => db.workouts.filter((w) => !w.extraId);
 // The weight to lift next time for one exercise: from its last session, lower after a break
 // of two weeks or more, then climbing back. Without a rep range only a break gives a number.
 function nextFor(exId, lo, hi, done = doneWorkouts(), now = Date.now()) {
@@ -566,15 +574,15 @@ function activeEx(it, done, seen = new Set()) {
     const wu = heavy ? warmups(work, stepFor(e.equip, unit()), { back: !!sug?.back, min: e.equip === 'Barbell' ? 20 : 0 }) : [];
     if (wu.length) sets = [...wu.map((aim) => ({ ...newSet('w'), aim })), ...sets.filter((s) => s.type !== 'w')];
   }
-  return { exId: it.exId, note: '', rest: db.restFor[it.exId] ?? db.settings.rest, lo, hi, sug, sets };
+  return { exId: it.exId, note: '', rest: db.restFor[it.exId] ?? db.settings.rest, lo, hi, sug, sets, ...(it.target && !lo ? { target: it.target } : {}) };
 }
 const musclesIn = (a) => new Set(a.exercises.map((ex) => getEx(ex.exId)).filter((e) => e.kind === 'wr').map((e) => e.muscle));
 
-function startWorkout({ name = 'Workout', items = [], routineId = null, routineIds = routineId ? [routineId] : [] } = {}) {
+function startWorkout({ name = 'Workout', items = [], routineId = null, routineIds = routineId ? [routineId] : [], extraId = null } = {}) {
   if (db.active) { toast('Finish or discard the current workout first'); go({ view: 'active' }); return; }
   const done = doneWorkouts();
   const seen = new Set();
-  db.active = { id: uid(), name, start: Date.now(), routineId, routineIds, exercises: items.map((it) => activeEx(it, done, seen)) };
+  db.active = { id: uid(), name, start: Date.now(), routineId, routineIds, ...(extraId ? { extraId } : {}), exercises: items.map((it) => activeEx(it, done, seen)) };
   save();
   unlockAudio();
   if (tab !== 'today') { stack = []; tab = 'today'; }
@@ -696,7 +704,7 @@ function exCard(ex, i, done) {
       <button class="ex-name" data-open="${ex.exId}">${thumb(e, 'round')}<span>${esc(e.name)}</span></button>
       <button class="icon-btn" data-exmenu aria-label="Exercise options">${icon('more')}</button>
     </div>
-    <div class="ex-meta"><button class="rest-chip" data-restpick>${icon('timer')}Rest ${ex.rest ? fmtClock(ex.rest) : 'off'}</button>${ex.lo ? `<span>${work} × ${rangeText(ex.lo, ex.hi)}</span>` : ''}${sugNote(ex)}</div>
+    <div class="ex-meta"><button class="rest-chip" data-restpick>${icon('timer')}Rest ${ex.rest ? fmtClock(ex.rest) : 'off'}</button>${ex.lo ? `<span>${work} × ${rangeText(ex.lo, ex.hi)}</span>` : ex.target ? `<span>${work} × ${esc(ex.target)}</span>` : ''}${sugNote(ex)}</div>
     ${ex.note || ex.noting ? `<input class="ex-note" data-note placeholder="Note" value="${esc(ex.note)}" maxlength="200">` : ''}
     <div class="sets k-${e.kind}">
       <div class="sets-head"><span>Set</span><span>Previous</span>${cols.map((c) => `<span>${c === 'kg' ? unit() : c}</span>`).join('')}<span>${icon('check')}</span></div>
@@ -1013,6 +1021,7 @@ async function finishWorkout() {
   const wk = {
     id: a.id, name: a.name.trim() || 'Workout', start: a.start, end: Date.now(), routineId: a.routineId,
     ...(a.routineIds?.length > 1 ? { routineIds: a.routineIds } : {}),
+    ...(a.extraId ? { extraId: a.extraId } : {}),
     exercises: a.exercises
       .map((ex) => ({ exId: ex.exId, note: ex.note.trim(), sets: ex.sets.filter((s) => s.done).map(({ type, w, r, t, at }) => ({ type, w, r, t, ...(at ? { at } : {}) })) }))
       .filter((ex) => ex.sets.length),
@@ -1058,7 +1067,7 @@ function itemLine(it, done) {
     : `<small>${lo ? 'new' : ''}</small>`;
   return `<button class="t-row" data-open="${it.exId}">
     ${thumb(e)}
-    <span class="t-txt"><b>${esc(e.name)}</b><small>${lo ? `${it.sets} × ${rangeText(lo, hi)}` : `${it.sets} set${it.sets === 1 ? '' : 's'}`}</small></span>
+    <span class="t-txt"><b>${esc(e.name)}</b><small>${esc(itemSets(it, lo, hi))}</small></span>
     <span class="t-wt">${right}</span>
   </button>`;
 }
@@ -1084,11 +1093,11 @@ VIEWS.today = () => {
   const r = next();
   const i = list.indexOf(r);
   const done = doneWorkouts();
-  const when = whenText(nextGymDay(db.plan.days, db.workouts, now));
+  const when = whenText(nextGymDay(db.plan.days, gymWorkouts(), now));
   const ups = r.items.filter((it) => { const [lo, hi] = rangeOf(it); return nextFor(it.exId, lo, hi, done)?.up; }).length;
   const last = done.find((w) => w.routineId && list.some((x) => x.id === w.routineId));
   const gymDays = db.plan.days.filter(Boolean).length;
-  const thisWeek = new Set(db.workouts.filter((w) => weekStart(w.start) === weekStart(now)).map((w) => startOfDay(w.start))).size;
+  const thisWeek = new Set(gymWorkouts().filter((w) => weekStart(w.start) === weekStart(now)).map((w) => startOfDay(w.start))).size;
   const sub = [`${r.items.length} exercise${r.items.length === 1 ? '' : 's'}`, when, ups ? `<span class="accent">${ups} going up</span>` : ''].filter(Boolean).join(' · ');
   return `${head}<div class="pad">
     ${resume}
@@ -1121,10 +1130,10 @@ $('#view').addEventListener('click', (e) => {
   if (t.closest('[data-startnext]')) { startWorkout({ name: r.name, items: r.items, routineId: r.id }); return; }
   if (t.closest('[data-editnext]')) { go({ view: 'routine', draft: structuredClone(r) }); return; }
   if (t.closest('[data-pick]')) {
-    actionSheet('Make this one next', db.routines.map((x) => ({
+    actionSheet('Make this one next', [...db.routines.map((x) => ({
       label: x.name + (x === r ? '  ✓' : ''),
       fn: () => { db.plan.pick = x.id; save(); rerender(); },
-    })));
+    })), ...db.extras.map((x) => ({ label: `Start ${x.name}`, fn: () => startExtra(x) }))]);
     return;
   }
   const day = t.closest('[data-day]');
@@ -1150,8 +1159,39 @@ VIEWS.routines = () => {
         <button class="btn soft block" data-rstart>Start ${esc(x.name)}</button>
       </div>`).join('')}
     <button class="btn ghost block" data-find>${icon('search')}Find exercises to add</button>` : emptyToday()}
+    ${extrasHtml()}
   </div>`;
 };
+
+// ---------- extras ----------
+function extrasHtml() {
+  if (!db.extras.length) return '';
+  return `<div class="sec-head"><h2>Extras</h2><small>outside the rotation</small></div>
+    ${db.extras.map((x) => `<div class="card routine" data-xid="${x.id}">
+        <div class="routine-top"><b>${esc(x.name)}</b><button class="icon-btn" data-xmenu aria-label="${esc(x.name)} options">${icon('more')}</button></div>
+        <div class="r-thumbs">${x.items.slice(0, 6).map((it) => thumb(getEx(it.exId))).join('')}</div>
+        <p class="routine-ex">${esc(x.items.map((it) => getEx(it.exId).name).join(', ')) || 'No exercises yet'}</p>
+        <button class="btn soft block" data-xstart>Start ${esc(x.name)}</button>
+      </div>`).join('')}
+    <p class="hint">Start these any time. They never move the rotation or count as a gym day.</p>`;
+}
+function startExtra(x) { startWorkout({ name: x.name, items: x.items, extraId: x.id }); }
+
+$('#view').addEventListener('click', (e) => {
+  if (cur().view !== 'routines') return;
+  const card = e.target.closest('[data-xid]');
+  if (!card) return;
+  const x = db.extras.find((r) => r.id === card.dataset.xid);
+  if (!x) return;
+  if (e.target.closest('[data-xstart]')) { startExtra(x); return; }
+  if (e.target.closest('[data-xmenu]')) {
+    actionSheet(x.name, [
+      { label: 'Edit routine', fn: () => go({ view: 'routine', draft: { ...structuredClone(x), extra: true } }) },
+      { label: 'Move to the rotation', fn: () => { db.extras = db.extras.filter((r) => r !== x); const { from, ...r } = x; db.routines.push(r); save(); rerender(); toast(`${x.name} is in the rotation now`); } },
+      { label: 'Delete routine', danger: true, fn: () => confirmBox(`Delete ${x.name}?`, 'Past workouts stay in History.', 'Delete', true).then((ok) => { if (ok) { db.extras = db.extras.filter((r) => r !== x); save(); rerender(); } }) },
+    ]);
+  }
+});
 
 $('#view').addEventListener('click', (e) => {
   if (cur().view !== 'routines') return;
@@ -1193,7 +1233,7 @@ VIEWS.routine = (v) => {
         return `<div class="r-item" data-ri="${i}">
         <div class="r-top">
           ${thumb(e)}
-          <span class="r-name"><b>${esc(e.name)}</b><small>${esc(e.muscle)}</small></span>
+          <span class="r-name"><b>${esc(e.name)}</b><small>${esc(e.muscle)}${!lo && it.target ? ` · ${esc(it.target)}` : ''}</small></span>
           <span class="r-tools">
             ${d.items.length > 1 ? `<button class="icon-btn sm" data-reorder aria-label="Reorder exercises">${icon('grip')}</button>` : ''}
             <button class="icon-btn sm" data-del aria-label="Remove ${esc(e.name)}">${icon('x')}</button>
@@ -1227,7 +1267,8 @@ $('#view').addEventListener('click', (e) => {
     d.name = d.name.trim();
     if (!d.name) { $('[data-rname]').focus(); toast('Name the routine'); return; }
     if (!d.items.length) { toast('Add at least one exercise'); return; }
-    if (d.id) db.routines[db.routines.findIndex((r) => r.id === d.id)] = d;
+    if (d.extra) { const { extra, ...x } = d; db.extras[db.extras.findIndex((r) => r.id === d.id)] = x; }
+    else if (d.id) db.routines[db.routines.findIndex((r) => r.id === d.id)] = d;
     else db.routines.push({ ...d, id: uid() });
     save();
     warmPhotos();
@@ -1519,6 +1560,46 @@ $('#view').addEventListener('click', (e) => {
 const LOW = 4; // work sets a week under which a muscle counts as getting little work
 const FIND_MUSCLES = MUSCLES.filter((m) => m !== 'Cardio' && m !== 'Other');
 let ask = { q: '', busy: false, answer: '', picks: [], error: '' };
+// Claude's routine (ask.routine: { name, items: [{ name, muscle, equip, sets, lo, hi | seconds }] }):
+// shown with Start now / Save to extras. An exercise Lift does not know yet becomes one of his own.
+const KIT = new Set(['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Kettlebell']);
+const findEx = (name) => matchExercise(name, allExercises()) || matchExercise(name, moreExercises());
+function routineFromClaude(r) {
+  const items = r.items.map((it) => {
+    let e = findEx(it.name);
+    if (!e) {
+      e = { id: 'c-' + uid(), name: it.name, muscle: it.muscle, equip: it.equip, kind: it.seconds ? 't' : KIT.has(it.equip) ? 'wr' : 'r', custom: true };
+      db.custom.push(e);
+    }
+    const item = { exId: e.id, sets: it.sets };
+    if (e.kind === 'wr' && it.lo) Object.assign(item, { lo: it.lo, hi: it.hi });
+    else if (targetText(it)) item.target = targetText(it);
+    return item;
+  });
+  buildExMap();
+  return { id: uid(), name: r.name, items, from: 'claude' };
+}
+function askRoutineHtml(r) {
+  const rows = r.items.map((it) => {
+    const e = findEx(it.name);
+    return `<div class="t-row">${e ? thumb(e) : `<span class="thumb glyph">${icon('plus')}</span>`}<span class="t-txt"><b>${esc(it.name)}</b><small>${it.sets} × ${esc(targetText(it))}${e ? '' : ' · new to Lift'}</small></span></div>`;
+  }).join('');
+  return `<div class="card routine x-claude">
+      <div class="routine-top"><b>${esc(r.name)}</b><span class="badge">Extra</span></div>
+      <div class="x-rows">${rows}</div>
+      <div class="row2"><button class="btn primary" data-xgo>${icon('play')}Start now</button><button class="btn soft" data-xkeep${ask.kept ? ' disabled' : ''}>${ask.kept ? 'Saved to extras' : 'Save to extras'}</button></div>
+    </div>`;
+}
+// Saved once per answer; Start now saves it too, so the workout's extra is in the list.
+function keepClaudeRoutine() {
+  if (!ask.kept) {
+    ask.kept = routineFromClaude(ask.routine);
+    db.extras.push(ask.kept);
+    save();
+    teachAsk('approved', ask.routine.name, ask.q);
+  }
+  return ask.kept;
+}
 // Lessons (paul-hub src/lessons.js, 2026-10-19): which of Claude's picks Paul added and which he
 // left. On Sundays Claude turns that into rules he keeps or drops on Morning; kept ones go into Ask.
 function teachAsk(kind, before, note) {
@@ -1570,6 +1651,7 @@ function askHtml() {
   return (ask.busy ? '<p class="hint">Claude is thinking…</p>' : '')
     + (ask.error ? `<p class="hint warn">${esc(ask.error)}</p>` : '')
     + (ask.answer ? `<p class="ask-answer">${esc(ask.answer)}</p>` : '')
+    + (ask.routine ? askRoutineHtml(ask.routine) : '')
     + (picks ? `<div class="card list">${picks}</div>` : '');
 }
 
@@ -1617,13 +1699,15 @@ async function askClaude() {
   const body = {
     question: q,
     library: allExercises().map((e) => e.name),
+    // No-gym names from free-exercise-db, so "abs at home" can name real ones with photos.
+    more: moreExercises().filter((e) => e.equip === 'Bodyweight' || e.muscle === 'Core').map((e) => e.name).slice(0, 300),
     recent: [...recent].map(([id, sets]) => ({ name: getEx(id).name, muscle: getEx(id).muscle, sets })),
     routines: db.routines.map((r) => ({ name: r.name, items: r.items.map((it) => getEx(it.exId).name) })),
   };
   try {
     const res = await fetch(`${HUB}/api/lift/${db.settings.hub}/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const got = await res.json().catch(() => ({}));
-    ask = res.ok ? { q, busy: false, answer: got.answer || '', picks: got.picks || [], error: '' }
+    ask = res.ok ? { q, busy: false, answer: got.answer || '', picks: got.picks || [], routine: got.routine?.items?.length ? got.routine : null, error: '' }
       : { q, busy: false, answer: '', picks: [], error: res.status === 503 ? 'Claude is not set up on paul-hub yet.' : 'Claude could not answer. Try again.' };
   } catch {
     ask = { q, busy: false, answer: '', picks: [], error: 'No connection. Ask again when you are online.' };
@@ -1635,6 +1719,8 @@ $('#view').addEventListener('input', (e) => { if (cur().view === 'find' && e.tar
 $('#view').addEventListener('submit', (e) => { if (cur().view === 'find' && e.target.matches('[data-askform]')) { e.preventDefault(); $('[data-askq]').blur(); askClaude(); } });
 $('#view').addEventListener('click', (e) => {
   if (cur().view !== 'find') return;
+  if (e.target.closest('[data-xkeep]') && ask.routine) { keepClaudeRoutine(); $('[data-askout]').innerHTML = askHtml(); toast('Saved under Routines › Extras'); return; }
+  if (e.target.closest('[data-xgo]') && ask.routine) { startExtra(keepClaudeRoutine()); return; }
   const add = e.target.closest('[data-add]');
   if (add) {
     const name = getEx(add.dataset.add).name;
@@ -1902,7 +1988,7 @@ const ymd = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${Strin
 function hubSummary() {
   const done = doneWorkouts();
   const r = next();
-  const nd = nextGymDay(db.plan.days, db.workouts);
+  const nd = nextGymDay(db.plan.days, gymWorkouts());
   return {
     next: r ? { name: r.name, items: r.items.map((it) => {
       const [lo, hi] = rangeOf(it);
@@ -1916,6 +2002,7 @@ function hubSummary() {
     workouts: done.slice(0, 500).map((w, i) => ({
       id: w.id, name: w.name, start: w.start, end: w.end, volume: Math.round(workoutVolume(w)), sets: workoutSetCount(w),
       prs: i < 10 ? prsFor(db.workouts, w, kindOf).length : 0,
+      ...(w.extraId ? { extra: true } : {}),
     })),
   };
 }

@@ -535,6 +535,8 @@ a.btn { text-decoration: none; color: inherit; }
 .ask { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 .ask .search { flex: 1; }
 .ask .btn { min-height: 44px; }
+.x-claude .x-rows { margin: 8px 0 4px; }
+.x-claude .t-row { min-height: 52px; }
 .ask-answer { color: var(--ink2); font-size: 15px; line-height: 1.45; margin: 12px 2px; }
 .hint.warn { color: var(--danger); }
 .f-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 12px; position: relative; }
